@@ -111,6 +111,26 @@ CREATE TABLE IF NOT EXISTS realtime_ticks (
 );
 CREATE INDEX IF NOT EXISTS idx_realtime_ticks_product_ts ON realtime_ticks(product_id, ts_unix DESC);
 
+-- LLM oracle call log — cost/budget tracker for llm_probability_oracle agents.
+-- Written by src/lib/arena/llm-oracle.ts; read by llm-oracle-budget.ts to enforce
+-- ARENA_LLM_ORACLE_DAILY_USD (default $1/day). Missing on fresh DBs would crash
+-- arena:tick whenever the oracle warmer is enabled.
+CREATE TABLE IF NOT EXISTS llm_call_log (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  model           TEXT NOT NULL,
+  prompt_version  TEXT,
+  market_id       TEXT,
+  input_tokens    INTEGER,
+  output_tokens   INTEGER,
+  cost_usd        REAL NOT NULL DEFAULT 0,
+  caller_agent_id INTEGER,
+  cache_hit       INTEGER NOT NULL DEFAULT 0,
+  response_json   TEXT,
+  error_kind      TEXT,
+  called_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_llm_call_log_called ON llm_call_log(called_at);
+
 -- Performance summary per strategy_version, recomputed by the research loop.
 CREATE TABLE IF NOT EXISTS performance_metrics (
   id                   INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -5,6 +5,22 @@ Versions follow [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+### Added — Agentic-trading blueprint + Python sim-lab reference
+
+- **Video intelligence** (`docs/blueprint/`) — 4 "All About AI" agentic-trading videos
+  reverse-engineered with OpenAI gpt-4o-mini vision (frame OCR) + gpt-4.1 synthesis. Per-video
+  `PROMPTS.md` (verbatim agent prompts, architecture, risk controls) + unified `BLUEPRINT.md`
+  (the LLM-as-trader pattern, the intent / single-execution-gate framework, the persona/risk system).
+- **`prompts/llm-trader-persona.v1.md`** — versioned trader-agent system prompt distilled from the
+  videos; seed for a planned `trader-llm` Evaluator that emits risk-gated `submit-order` intents.
+- **`docs/blueprint/INTEGRATION.md`** — maps the blueprint onto existing capsules/router/risk/stages
+  and lays out the scale plan: `trader-llm` agent, `strategy-factory` (→10^5 variants via param grids),
+  and an `allocator` ("which agents get a capsule and why", logged to `evolution_log`).
+- **`research/sim-lab/`** — self-contained Python reference implementation of the full loop on REAL
+  market data (Coinbase/Hyperliquid): OpenAI LLM-trader → capsule → single risk gate → sim perp broker
+  → risk-adjusted scoring → multi-window promotion verdict → treasury ledger. Unit-tested broker math
+  (5/5). De-risks the TS port. Measured: single LLM scalper ≈ break-even (BTC +1.0%, ETH +0.82% on 5m).
+
 ### Added — Packaging pass (port of TradingBot patterns)
 
 - **Venue abstraction** (`src/lib/venue/`)

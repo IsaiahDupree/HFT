@@ -41,3 +41,12 @@ if [ "$ALLOCATE_EVERY" -gt 0 ] && [ $(( n % ALLOCATE_EVERY )) -eq 0 ]; then
   npx tsx scripts/arena-allocate.ts --commit --create-capsules \
     --budget "$ALLOC_BUDGET" --min-trades 1 --min-fitness 0.00001 2>&1 | grep -E 'funded [0-9]|CAPSULES|COMMITTED'
 fi
+
+# Re-target as markets change: every RESEARCH_EVERY cycles (default 24 ≈ 2h at
+# 5-min cadence), re-derive regime/event/arb conditions and seed a bounded batch
+# of matched agents. Population-capped; arena:evolve culls the weak.
+RESEARCH_EVERY="${RESEARCH_EVERY:-24}"
+if [ "$RESEARCH_EVERY" -gt 0 ] && [ $(( n % RESEARCH_EVERY )) -eq 0 ]; then
+  echo "--- cycle $n: research-refresh (re-target on current market conditions) ---"
+  npx tsx scripts/research-refresh.ts --limit 12 2>&1 | grep -E 'regime|seeded|skip'
+fi

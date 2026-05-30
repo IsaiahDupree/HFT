@@ -35,8 +35,8 @@ implement, not the family abstraction.
 | 3 | **Statistical arbitrage (pairs/cointegration)** | Engle-Granger pairs · Johansen baskets · ETF arb (creation/redemption) · Lead-lag · Index arb | [pairs-trading-cointegration.md](./pairs-trading-cointegration.md) ✅ |
 | 4 | **Microstructure signal trading** | Order-book imbalance (OBI) · Microprice · Order-flow imbalance (OFI) · Trade-flow imbalance (TFI) · VPIN toxicity · Sweep detection · Iceberg detection · Queue-burst | [microstructure-signals.md](./microstructure-signals.md) ✅ |
 | 5 | **Latency arbitrage** | Cross-venue stale-quote · Tick-by-tick lead-lag (futures→cash) · Listing/delisting front-run · Oracle update front-run (on-chain) | 📝 `latency-arbitrage.md` (planned) |
-| 6 | **Execution algorithms** | TWAP · VWAP · POV (participation) · Implementation Shortfall · Adaptive (alpha-aware) · Iceberg/hidden | 📝 `execution-algos.md` (planned) |
-| 7 | **Basis & funding trading** | Perp-spot cash-and-carry · Cross-exchange funding spread · Futures-spot calendar roll · Borrow-lend rate arb | 📝 `basis-funding.md` (planned — referenced from `src/lib/hft/basis.ts`) |
+| 6 | **Execution algorithms** | TWAP · VWAP · POV (participation) · Implementation Shortfall · Adaptive (alpha-aware) · Iceberg/hidden | [execution-algos.md](./execution-algos.md) ✅ |
+| 7 | **Basis & funding trading** | Perp-spot cash-and-carry · Cross-exchange funding spread · Futures-spot calendar roll · Borrow-lend rate arb | [basis-funding.md](./basis-funding.md) ✅ |
 | 8 | **Event-driven** | Earnings/news drift · Scheduled macro (CPI/NFP) · On-chain oracle updates · Polymarket resolution scrape · Token unlock/airdrop | 📝 `event-driven.md` (planned — referenced from `near-resolution-scrape.ts`) |
 | 9 | **Options & volatility** | Delta-hedged MM (gamma scalping) · Vol surface arb · Implied-vs-realized spread · Binary option MM (Polymarket) · Skew/term-structure trades | 📝 `options-volatility.md` (planned) |
 | 10 | **ML/RL-driven (cross-cutting)** | RL parameter tuning of A-S · LSTM/Transformer microstructure prediction · DQN execution agent · Bandit venue routing | 📝 `ml-rl-overlays.md` (planned) |

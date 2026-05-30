@@ -58,12 +58,24 @@ fills with spread-calibrated params** — wide σ quotes far outside the book an
 *is* the alpha); (2) top-of-book queue tracking under-counts fills when we improve the price (full
 L2 §8.6 is the upgrade).
 
+## Signals + real-data capture/replay — BUILT ✅ (`src/lib/backtest/l2/`)
+- **`signals.ts`**: `OFICalculator` (Cont-Kukanov-Stoikov), streaming `VPINCalculator` (binary-
+  normalized), `SignalEngine` (emits `{microprice, ofi, vpin}` from a MarketEvent stream), and
+  `calibrateOfiAlpha` (the Δx≈β·OFI regression, with the in-sample-R²>0.2 leak warning). 6/6 tests.
+- **`asMmSignalStrategy`**: the full §9 quoting algorithm — logit reservation **α-skewed by OFI**
+  (`betaOfi·OFI`), inventory-skewed, with a **VPIN toxicity gate** (widen, or withdraw).
+- **`scripts/capture-l2.ts`** (`npm run capture:l2`, wired into the loop): captures REAL Polymarket
+  L2 top-of-book (keyless public CLOB `/book`) → JSONL MarketEvents under `data/captures/<date>/`.
+  Verified live (Maduro spread 0.001; Spencer-Pratt bid 0.23×21.7k / ask 0.24×26.2k). **`replay.ts`**
+  loads captures back into the L2 backtester — full capture→replay→signals→backtest proven on real data.
+
 ## Remaining moves, in order of leverage
-1. **Full L2 (§8.6)** order book (per-level + true queue) replacing the top-of-book heuristic.
-2. **Live WS L2 feed** (`wss://ws-subscriptions-clob.polymarket.com/ws/market`) with reconnect +
-   heartbeat watchdog + REST reconcile (§10.5) → real microprice/OFI/VPIN; capture to `order_events`.
-3. **Calibrate** β_OFI, κ, σ_b on our own V2 captures; **CPCV → gate go-live on PBO<0.3, DSR>0.95**.
-4. Route MM capital to the **Finance category** first (50% rebate) and `post_only=True` always.
+1. **Accumulate captures** (the loop now appends every 5 min) → enough real series to **`calibrateOfiAlpha`**.
+2. **Full L2 (§8.6)** order book (per-level + true queue) replacing the top-of-book heuristic.
+3. **Live WS market channel** (`wss://ws-subscriptions-clob.polymarket.com/ws/market`) — sub-50ms L2 +
+   real **trade** events (so VPIN is live, not just OFI/microprice from REST polling); §10.5 reconnect/heartbeat.
+4. **Calibrate** β_OFI/κ/σ_b on the captures; **CPCV → gate go-live on PBO<0.3, DSR>0.95**.
+5. Route MM capital to the **Finance category** first (50% rebate) and `post_only=True` always.
 
 Roadmap acceptance ladder (handbook §16): Data → Simulator → Naive MM → Signals → Events → Validation
 → Paper (2 weeks tracking) → Tiny live ($100, $10/market). Don't skip phases.

@@ -2,3 +2,5 @@
 export * from "./engine";
 export * from "./strategies";
 export * from "./synthetic";
+export * from "./signals";
+export * from "./replay";

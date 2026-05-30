@@ -31,6 +31,10 @@ echo "=== $(date '+%F %T') arena cycle ==="
 npm run --silent worker:snapshot
 npm run --silent arena:tick
 
+# Build the real Polymarket L2 capture time series (handbook Data layer) so the
+# AS market-maker's β_OFI/κ/σ_b can be calibrated on real microstructure over time.
+npx tsx scripts/capture-l2.ts --markets 12 2>&1 | tail -1
+
 # Auto-allocate every ALLOCATE_EVERY cycles (default 12 ≈ hourly at 5-min cadence)
 # so the funded capsule set tracks the evolving leaderboard. Funds only proven
 # positive-fitness agents; on early cycles that may be zero (correct discipline).

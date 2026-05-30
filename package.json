@@ -100,7 +100,8 @@
     "scan:complement-sum": "tsx scripts/scan-complement-sum.ts",
     "strategy:factory": "tsx scripts/strategy-factory.ts",
     "arena:allocate": "tsx scripts/arena-allocate.ts",
-    "hft:pipeline": "tsx scripts/hft-pipeline.ts"
+    "hft:pipeline": "tsx scripts/hft-pipeline.ts",
+    "arena:review": "tsx scripts/review-arena.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

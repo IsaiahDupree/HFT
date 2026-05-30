@@ -41,16 +41,28 @@ the inventory-vs-signal skew weighting. Those are fit from *your own* captures a
 - **purged combinatorial CV → PBO < 0.3, Deflated Sharpe > 0.95**.
 "A strategy that works in backtest but fails on +100ms delay injection is not 90% good — it is 0% good."
 
-## The honest gap to a *faithful* MM
-Our arena sim is **snapshot/bar-based** — no L2 order book, no queue position. A true AS maker needs
-the handbook's **event-driven backtester with queue tracking + per-fill maker/taker accounting** (§10).
-So today the library is used as (a) the **fee/rebate economics** the live MM respects, and (b) a
-**tested foundation** for a proper L2 backtester. Next moves, in order of leverage:
-1. **L2 order-book sim** (port §10 `Backtester`) so AS/logit/VPIN quoting can be *validated* with the
-   delay-injection + CPCV suite before any capital.
+## L2 event-driven backtester — BUILT ✅ (`src/lib/backtest/l2/`)
+Ported the handbook §10 engine (distinct from the mark-to-midpoint snapshot replayer in
+`../engine.ts`): a time-ordered event heap, top-of-book **queue-position** tracking, injectable
+**latency**, partial fills, and per-fill **maker/taker fee accounting** via the fee model above.
+Strategies are callbacks (`asMmStrategy` = logit-AS inventory-skewed; `constantSpreadStrategy` =
+Phase-3 baseline; `doNothingStrategy` = acceptance). `npm run backtest:mm` runs it on seeded
+synthetic data + the delay-injection sweep. 5/5 unit tests (`tests/unit/l2-backtester.test.ts`).
+
+**Validation finding (synthetic):** do-nothing → $0.00 (acceptance met); const-spread → +$52 but
+**inventory 515** (the classic constant-spread ratchet — no inventory control); **AS-logit MM →
++$35 with inventory ≈ 1** (market-neutral). The AS maker is far better *risk-adjusted* — exactly the
+handbook's "AS beats constant-spread on Sharpe." Delay-injection degrades **smoothly** ($35→$6 as
+latency grows, fewer fills), no look-ahead collapse. Two honest caveats it surfaced: (1) **AS only
+fills with spread-calibrated params** — wide σ quotes far outside the book and never fills (calibration
+*is* the alpha); (2) top-of-book queue tracking under-counts fills when we improve the price (full
+L2 §8.6 is the upgrade).
+
+## Remaining moves, in order of leverage
+1. **Full L2 (§8.6)** order book (per-level + true queue) replacing the top-of-book heuristic.
 2. **Live WS L2 feed** (`wss://ws-subscriptions-clob.polymarket.com/ws/market`) with reconnect +
-   heartbeat watchdog + REST reconcile (§10.5) → real microprice/OFI/VPIN.
-3. **Calibrate** β_OFI, κ, σ_b on our own V2 captures; gate go-live on PBO/DSR.
+   heartbeat watchdog + REST reconcile (§10.5) → real microprice/OFI/VPIN; capture to `order_events`.
+3. **Calibrate** β_OFI, κ, σ_b on our own V2 captures; **CPCV → gate go-live on PBO<0.3, DSR>0.95**.
 4. Route MM capital to the **Finance category** first (50% rebate) and `post_only=True` always.
 
 Roadmap acceptance ladder (handbook §16): Data → Simulator → Naive MM → Signals → Events → Validation

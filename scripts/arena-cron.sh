@@ -13,7 +13,10 @@
 # cadence breeds a new generation roughly every ~4h and the allocator can then be
 # run against an increasingly proven population.
 set -u
-REPO="/Users/isaiahdupree/Documents/Software/HFT-work"
+# Operate on the checkout this script lives in (NOT a hardcoded path) — so the
+# launchd runtime at ~/hft-live ticks ITS db, and a dev run from HFT-work ticks
+# HFT-work's. ${0:A:h:h} = absolute repo root (parent of scripts/). zsh-only.
+REPO="${0:A:h:h}"
 LOCK="/tmp/hft-arena-cron.lock"
 cd "$REPO" || exit 1
 

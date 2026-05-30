@@ -1,0 +1,97 @@
+# Single-host deploy that preserves the local SQLite-store architecture.
+#
+# - `app`        — the Next.js control plane on :3000
+# - `reconcile`  — sidecar that runs `npm run worker:reconcile` every 60s
+# - `research`   — sidecar that runs `npm run worker:research` every 5 min
+#
+# Both sidecars share the same data volume so the database stays consistent.
+#
+# Bring up:   docker compose up -d --build
+# Logs:       docker compose logs -f app
+# Stop:       docker compose down
+#
+# Secrets: drop your .env.local at the project root before `up`. The compose
+# file mounts it read-only into every container so secrets never bake into
+# the image.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: polymarket-agents:latest
+    container_name: polymarket-agents-app
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    volumes:
+      - polymarket-data:/app/data
+      - ./coinbase_cloud_api_key.json:/app/coinbase_cloud_api_key.json:ro
+    restart: unless-stopped
+
+  reconcile:
+    image: polymarket-agents:latest
+    container_name: polymarket-agents-reconcile
+    depends_on:
+      - app
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - polymarket-data:/app/data
+      - ./coinbase_cloud_api_key.json:/app/coinbase_cloud_api_key.json:ro
+    command: >
+      sh -c "while true; do
+        echo '[reconcile] tick';
+        npx tsx scripts/worker-reconcile.ts || true;
+        sleep 60;
+      done"
+    restart: unless-stopped
+
+  research:
+    image: polymarket-agents:latest
+    container_name: polymarket-agents-research
+    depends_on:
+      - app
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - polymarket-data:/app/data
+      - ./coinbase_cloud_api_key.json:/app/coinbase_cloud_api_key.json:ro
+    command: >
+      sh -c "while true; do
+        echo '[research] tick';
+        npx tsx scripts/research-loop.ts || true;
+        sleep 300;
+      done"
+    restart: unless-stopped
+
+  realtime:
+    # Long-running Polymarket WebSocket subscriber. Pairs with the
+    # scribe-sports strategy's `requires_websocket: true` flag.
+    # Enable by setting REALTIME_EVENT_SLUGS or REALTIME_MARKET_SLUGS
+    # (firehose mode if neither is set). Optionally REALTIME_USER_CHANNEL=1
+    # to subscribe to the authenticated clob_user channel (needs CLOB creds).
+    image: polymarket-agents:latest
+    container_name: polymarket-agents-realtime
+    depends_on:
+      - app
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - polymarket-data:/app/data
+      - ./coinbase_cloud_api_key.json:/app/coinbase_cloud_api_key.json:ro
+    command: ["npx", "tsx", "scripts/worker-realtime.ts"]
+    restart: unless-stopped
+
+volumes:
+  polymarket-data:

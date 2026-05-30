@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# Cancel superseded runs on the same ref so the latest commit always gets
+# fresh feedback and we don't waste runner minutes on stale work.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests + Typecheck + Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      matrix:
+        # Node 22 LTS is the project's reference runtime (also what the
+        # Dockerfile pins). 24 is the current Vercel default — track it so
+        # we catch regressions before bumping.
+        node-version: ["22.x", "24.x"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      # `npm ci` requires package-lock.json to be in sync with package.json.
+      # If a contributor only updated package.json, this step will fail —
+      # surfacing the lock-file drift in PR review.
+      - name: Install dependencies
+        run: npm ci
+
+      # Runs ~1170+ unit/integration/contract tests in <10s. E2E tests
+      # (RUN_E2E=1) hit live network and are deliberately NOT in CI.
+      - name: Test suite
+        run: npm run test:run
+
+      # Strict typecheck of src/ + tests/. Build's own typecheck is bypassed
+      # in next.config.mjs because Next 15.1.6 has an intermittent worker
+      # race; this step is the authoritative type gate.
+      - name: Typecheck (src + tests)
+        run: npx tsc --noEmit
+
+      # Builds the Next.js production bundle. Smoke-tests that every route
+      # collects cleanly (no PageNotFoundError) — the runtime safety net
+      # on top of typecheck.
+      - name: Build
+        run: npm run build
+
+  # UI smoke + hydration tests. Separate job because Playwright cold-start +
+  # browser download is ~2-3 min — keep PR feedback fast by NOT making this
+  # block the merge. Runs on push to master and on a manual workflow_dispatch.
+  ui:
+    name: UI hydration smoke (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Install only the chromium browser (saves ~80% of download size vs all).
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      # Build once for a realistic prod-ish surface; the dev:test server
+      # Playwright auto-starts will skip rebuilds where possible.
+      - name: Build
+        run: npm run build
+
+      # Seed a minimal DB so dynamic-route tests have IDs to navigate to.
+      # The hydration spec falls back to defaults that match this seed.
+      - name: Seed test DB
+        run: |
+          npm run db:init
+          npm run db:seed
+          npm run seed:tracked-wallets
+
+      - name: Playwright UI smoke
+        run: npm run test:ui
+
+      - name: Upload Playwright trace on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-trace
+          path: test-results/
+          if-no-files-found: ignore

@@ -1,0 +1,126 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.polymarket.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Get relayer address and nonce
+
+> Fetches the relayer address and nonce for a specific user. Takes in the user's signer address and the type of nonce to retrieve.
+
+
+
+
+## OpenAPI
+
+````yaml /api-spec/relayer-openapi.yaml get /relay-payload
+openapi: 3.0.3
+info:
+  title: Polymarket Relayer API
+  version: 1.0.0
+  description: HTTP API for the Polymarket Relayer. Submit and track gasless transactions.
+servers:
+  - url: https://relayer-v2.polymarket.com
+    description: Polymarket Relayer API
+security: []
+tags:
+  - name: Relayer
+    description: Relayer transaction operations
+  - name: Relayer API Keys
+    description: >
+      Relayer API keys let a user authenticate requests to relayer endpoints
+      without Gamma auth.
+
+      However, Relayer API keys can only be created using Gamma auth. Every
+      address can create a maximum of 100 keys.
+
+
+      The API key auth headers are:
+
+      - `RELAYER_API_KEY`
+
+      - `RELAYER_API_KEY_ADDRESS`
+
+
+      `RELAYER_API_KEY_ADDRESS` must match the address that owns the key.
+paths:
+  /relay-payload:
+    get:
+      tags:
+        - Relayer
+      summary: Get relayer address and nonce
+      description: >
+        Fetches the relayer address and nonce for a specific user. Takes in the
+        user's signer address and the type of nonce to retrieve.
+      parameters:
+        - name: address
+          in: query
+          required: true
+          description: User's signer address
+          schema:
+            $ref: '#/components/schemas/Address'
+          example: '0x77837466dd64fb52ECD00C737F060d0ff5CCB575'
+        - name: type
+          in: query
+          required: true
+          description: Type of nonce to retrieve
+          schema:
+            type: string
+            enum:
+              - PROXY
+              - SAFE
+          example: PROXY
+      responses:
+        '200':
+          description: Relay payload retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelayPayloadResponse'
+              example:
+                address: '0x4da9395388791c22684e03779c3de10934eb9cfb'
+                nonce: '31'
+        '400':
+          description: Bad Request - Missing or invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidAddress:
+                  value:
+                    error: invalid address
+                invalidType:
+                  value:
+                    error: invalid type
+        '500':
+          description: Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    Address:
+      type: string
+      description: Ethereum address (0x-prefixed, 40 hex chars)
+      pattern: ^0x[a-fA-F0-9]{40}$
+      example: '0x6e0c80c90ea6c15917308F820Eac91Ce2724B5b5'
+    RelayPayloadResponse:
+      type: object
+      properties:
+        address:
+          $ref: '#/components/schemas/Address'
+          description: Relayer address
+          example: '0x4da9395388791c22684e03779c3de10934eb9cfb'
+        nonce:
+          type: string
+          description: Current nonce value
+          example: '31'
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+````

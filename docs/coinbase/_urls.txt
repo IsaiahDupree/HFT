@@ -1,0 +1,9 @@
+https://docs.cdp.coinbase.com/coinbase-app/advanced-trade-apis/overview
+https://docs.cdp.coinbase.com/coinbase-app/advanced-trade-apis/rest-api
+https://docs.cdp.coinbase.com/coinbase-app/advanced-trade-apis/sandbox
+https://docs.cdp.coinbase.com/coinbase-app/advanced-trade-apis/faq
+https://docs.cdp.coinbase.com/coinbase-app/advanced-trade-apis/websocket/websocket-overview
+https://docs.cdp.coinbase.com/coinbase-app/advanced-trade-apis/websocket/websocket-rate-limits
+https://docs.cdp.coinbase.com/coinbase-app/advanced-trade-apis/guides/orders
+https://docs.cdp.coinbase.com/get-started/authentication/jwt-authentication
+https://docs.cdp.coinbase.com/api-reference/advanced-trade-api/rest-api/introduction

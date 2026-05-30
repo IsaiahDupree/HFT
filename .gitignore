@@ -1,0 +1,71 @@
+# ---- Dependencies ----
+node_modules
+.pnp
+.pnp.*
+.yarn/install-state.gz
+
+# ---- Build artifacts ----
+.next
+out
+dist
+build
+*.tsbuildinfo
+
+# ---- Secrets / env (NEVER COMMIT) ----
+.env
+.env.*
+!.env.local.example
+*.pem
+*.key
+secrets/
+credentials/
+.credentials.json
+.envs-extracted/
+envs-*.zip
+cdp_api_key.json
+coinbase_cloud_api_key.json
+kalshi_api_key.json
+kalshi_private_key.pem
+new.txt
+
+# ---- Local databases (may contain user-identifying data) ----
+*.db
+*.sqlite
+*.sqlite3
+*-journal
+*-shm
+*-wal
+data/
+
+# ---- Local sweep + worker output ----
+# Broader glob: catches dydx-*-results.json (one of which embedded a testnet
+# wallet mnemonic) and any future *-results.json the scripts emit. Keep
+# specific filenames below as safety belt if the glob is ever loosened.
+docs/*-results.json
+docs/test-results.json
+docs/coinbase-test-results.json
+docs/kalshi-test-results.json
+
+# ---- Test/coverage output ----
+coverage/
+.vitest/
+.nyc_output/
+*.lcov
+test-results/
+
+# ---- IDE / OS ----
+.DS_Store
+.vscode/
+.idea/
+Thumbs.db
+~$*
+*.swp
+*.swo
+
+# ---- Logs ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.secrets-staging

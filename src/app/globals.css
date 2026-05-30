@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { color-scheme: dark; }
+  body { -webkit-font-smoothing: antialiased; }
+  a { text-decoration: none; }
+}
+
+@layer components {
+  .card { @apply rounded-lg border border-ink-700 bg-ink-900 p-5; }
+  .card-title { @apply text-xs uppercase tracking-wider text-zinc-500 mb-2; }
+  .stat { @apply text-2xl font-semibold tabular-nums text-zinc-100; }
+  .pill { @apply inline-flex items-center rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider; }
+  .pill-green { @apply pill bg-accent-green/15 text-accent-green; }
+  .pill-red { @apply pill bg-accent-red/15 text-accent-red; }
+  .pill-amber { @apply pill bg-accent-amber/15 text-accent-amber; }
+  .pill-blue { @apply pill bg-accent-blue/15 text-accent-blue; }
+  .row-link { @apply block hover:bg-ink-800 rounded px-2 -mx-2 py-2 transition-colors; }
+  table.list { @apply w-full text-left; }
+  table.list th { @apply text-xs uppercase tracking-wider text-zinc-500 py-2 border-b border-ink-700; }
+  table.list td { @apply py-2 border-b border-ink-800/60; }
+  table.list tr:hover td { @apply bg-ink-800/60; }
+}
+
+/* Trade ticker marquee — slides the duplicated list across the bar in
+   60 seconds, pauses on hover so links are clickable. */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.ticker-track {
+  animation: ticker-scroll 60s linear infinite;
+  will-change: transform;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}

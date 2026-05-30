@@ -31,12 +31,34 @@ drawdowns.** Best-by-Sharpe winner by coin: **SMA-trend ×5, Donchian ×4, z-mea
 - This directly justifies the arena's `cb_breakout` / `cb_momentum_burst` / `cb_mean_reversion`
   genome families — they encode exactly these edges.
 
-## Caveat — this is in-sample
-`best-by-Sharpe` over a param grid is in-sample selection → **optimistic**. Before any capital, run
-the same walk-forward / purged-CV discipline used on the MM side (delay-injection isn't relevant for
-daily bars, but **out-of-sample param stability, PBO < 0.3, Deflated Sharpe > 0.95** are). The grid is
-small (5 SMA / 4 Donchian / 18 z) to limit selection bias, and the edge shows up across 12 independent
-coins — which is the real evidence, more than any single number.
+## ⚠️ Out-of-sample VERDICT — the headline was mostly overfit
+`npm run validate:history` does the honest test: pick the best params on the in-sample **first 70%**
+of each coin, then score those SAME params on the held-out **last 30%**. Result (10 bps/turn):
+
+| coin | IS-picked | IS Sharpe | **OOS Sharpe** | OOS PnL | verdict |
+|------|-----------|-----------|----------------|---------|---------|
+| **BTC** | SMA-50 | 1.59 | **1.17** | +204% | **HELD ✓ (beats b&h)** |
+| **ADA** | z-rev    | 0.54 | **0.73** | +66% (b&h −42%) | **HELD ✓** (mean-rev on a downtrender) |
+| MATIC | Donchian | 0.76 | 0.18 | −6% (b&h −72%) | HELD ✓ (capital protection) |
+| ETH | SMA-20 | 1.66 | 0.32 | +15% | held (under b&h) |
+| BCH | SMA-20 | 0.88 | 0.20 | −15% | held (under b&h) |
+| AVAX, SOL, LTC, XRP, DOGE, DOT, LINK | — | 1.0–1.7 | **negative** | — | **FADED ✗** |
+
+**OOS Sharpe stayed positive on only 5/12 coins; beat buy-&-hold OOS on 5/12.** The IS-best params on
+AVAX/SOL/LTC/XRP (IS Sharpe 1.2–1.7) **collapsed to negative out-of-sample** — classic grid overfit.
+
+### What actually survives
+- **BTC trend-following (SMA-50)** is a *real, robust* edge — held strongly OOS.
+- **Mean-reversion on chronic downtrenders (ADA)** is real — matches the arena's "regime=chop → mean-rev".
+- "Trend-following always wins" does **NOT** generalize — most coins' IS winners were noise.
+
+### The right conclusion
+Do **NOT** wire IS-best params into live seeding — they overfit. The deep-history backtest gives
+*priors* (which coin × strategy-TYPE has a genuine edge: BTC trend, ADA-style mean-rev), not
+deploy-ready params. And the **arena's continuous evolve+allocate loop IS out-of-sample by
+construction** — it tests many live and funds only what proves positive on never-seen data. That is
+the correct methodology; this validation just told us which priors to trust. Further rigor: multi-fold
+walk-forward + PBO/Deflated-Sharpe before any capital.
 
 ## Pipeline
 ```

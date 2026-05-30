@@ -47,6 +47,13 @@ fi
 # of matched agents. Population-capped; arena:evolve culls the weak.
 RESEARCH_EVERY="${RESEARCH_EVERY:-24}"
 if [ "$RESEARCH_EVERY" -gt 0 ] && [ $(( n % RESEARCH_EVERY )) -eq 0 ]; then
+  echo "--- cycle $n: signal scan (refresh proven-winner pool + opportunity signals) ---"
+  # scan-leaderboard refreshes tracked_wallets (Polymarket's sustained top traders);
+  # the opportunity scanners emit strategy-opportunity signals into evolution_log
+  # (what AgentContext / the oracle / research read). Each is single-pass + cheap.
+  for sc in scan-leaderboard scan-near-resolution scan-cross-timeframe scan-orderbook-imbalance; do
+    npx tsx "scripts/$sc.ts" 2>&1 | tail -1
+  done
   echo "--- cycle $n: research-refresh (re-target on current market conditions) ---"
   npx tsx scripts/research-refresh.ts --limit 12 2>&1 | grep -E 'regime|seeded|skip'
 fi

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  HFT arena loop — macOS LaunchAgent. Runs one arena cycle (worker:snapshot +
+  arena:tick, +hourly auto-allocate) every 5 minutes and at load, reboot-durable.
+
+  IMPORTANT — runtime checkout must live OUTSIDE ~/Documents:
+    macOS TCC denies background daemons (cron AND LaunchAgents) read access to
+    ~/Documents, so the loop runs from a RUNTIME checkout at ~/hft-live (HOME is
+    daemon-readable). Keep developing/pushing from the Documents checkout; the
+    runtime one just pulls and runs.
+
+  One-time setup:
+    rsync -a --exclude node_modules --exclude .git --exclude .next \
+      ~/Documents/Software/HFT-work/ ~/hft-live/      # or: git clone the repo there
+    cd ~/hft-live && npm install
+    # seed an arena once if the DB is fresh:  npm run arena:init  (or strategy-factory --arena --seed)
+    cp scripts/launchd/com.isaiahdupree.hft.arena.plist ~/Library/LaunchAgents/
+    launchctl unload ~/Library/LaunchAgents/com.isaiahdupree.hft.arena.plist 2>/dev/null
+    launchctl load  -w ~/Library/LaunchAgents/com.isaiahdupree.hft.arena.plist
+
+  Status:  launchctl list | grep hft        Logs: /tmp/hft-arena.log
+  Update:  git -C ~/hft-live pull           Stop: launchctl unload -w <plist>
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.isaiahdupree.hft.arena</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-l</string>
+    <string>-c</string>
+    <string>cd /Users/isaiahdupree/hft-live &amp;&amp; /bin/zsh scripts/arena-cron.sh</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/hft-arena.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/hft-arena.log</string>
+</dict>
+</plist>

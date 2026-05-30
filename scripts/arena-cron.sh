@@ -3,8 +3,11 @@
 # Lock-guarded so overlapping invocations don't pile up. Safe to run from cron
 # or the arena-loop.sh wrapper.
 #
-# Schedule every 5 minutes via crontab:
-#   */5 * * * * /bin/zsh -lc '/Users/isaiahdupree/Documents/Software/HFT-work/scripts/arena-cron.sh' >> /tmp/hft-arena.log 2>&1
+# PREFERRED scheduler on macOS: a launchd LaunchAgent (runs in the user session
+# with full Documents/TCC access, every 5 min, reboot-durable) — see
+# scripts/launchd/com.isaiahdupree.hft.arena.plist for install instructions.
+# (cron was flaky here: the cron daemon failed to cd into ~/Documents for this
+# job even though it can for others — launchd avoids the quirk entirely.)
 #
 # arena:tick auto-evolves every ARENA_EVOLVE_EVERY (default 50) ticks, so a 5-min
 # cadence breeds a new generation roughly every ~4h and the allocator can then be

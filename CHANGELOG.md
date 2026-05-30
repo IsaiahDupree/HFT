@@ -5,6 +5,16 @@ Versions follow [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+### Added — reboot-durable scheduling via launchd (cron can't read ~/Documents)
+
+macOS TCC denies background daemons read access to `~/Documents` (a freshly-loaded LaunchAgent
+gets none; even cron is blocked from agent-created files there). So the durable loop runs from a
+**runtime checkout outside `~/Documents`** (`~/hft-live`) via a launchd LaunchAgent
+(`scripts/launchd/com.isaiahdupree.hft.arena.plist`): one arena cycle every 5 min + at load,
+reboot-durable, logs to `/tmp/hft-arena.log`. Develop/push from the Documents checkout; the runtime
+one just `git pull`s and runs. (`arena-cron.sh`'s crontab note is retained for hosts where cron has
+Full Disk Access and the repo isn't agent-provenanced.)
+
 ### Added — allocator can mint sim capsules + a continuous arena loop
 
 - **`arena:allocate --commit --create-capsules`** — turns the funded set into real (but still

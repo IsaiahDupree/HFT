@@ -327,6 +327,27 @@ async function maybeInstallLlmOracle(): Promise<void> {
   }
 }
 
+/**
+ * Wire the blueprint trader agent into the dispatch. Gated on TRADER_LLM=1 so it
+ * stays inert by default; it only ACTS when its strategy ("llm-trader") has an
+ * active capsule, and every order still passes the router's halt→capsule→risk
+ * gates. Mirrors maybeInstallLlmOracle's load-on-demand + auth-check pattern.
+ */
+async function maybeInstallLlmTrader(): Promise<void> {
+  if (process.env.TRADER_LLM !== "1") return;
+  try {
+    const mod = await import("../src/lib/agents/trader-llm.ts");
+    if (mod.traderLlmAvailable()) {
+      evaluators["llm-trader"] = mod.traderLlmEvaluator;
+      console.log("[research-loop] LLM Trader registered (strategy slug: llm-trader)");
+    } else {
+      console.log("[research-loop] TRADER_LLM=1 set but Anthropic auth unavailable — trader not registered");
+    }
+  } catch (err) {
+    console.warn(`[research-loop] failed to load LLM Trader: ${(err as Error).message}`);
+  }
+}
+
 function proposeVersion(strategyId: number, parent: StrategyVersionRow, patch: Record<string, unknown>, rationale: string, backtestSummary: Record<string, unknown>): { id: number; version: number; spec: Record<string, unknown> } {
   const handle = db();
   const nextVersion = (handle.prepare("SELECT COALESCE(MAX(version), 0) + 1 AS v FROM strategy_versions WHERE strategy_id = ?").get(strategyId) as any).v as number;
@@ -349,6 +370,7 @@ function proposeVersion(strategyId: number, parent: StrategyVersionRow, patch: R
 (async () => {
   console.log(`[research-loop] starting at ${new Date().toISOString()}`);
   await maybeInstallLlmOracle();
+  await maybeInstallLlmTrader();
   const sampleSize = Number(process.env.RESEARCH_SAMPLE_SIZE ?? "12");
   const signals = await buildSignals(sampleSize);
   console.log(`[research-loop] computed signals for ${signals.length}/${sampleSize} markets`);

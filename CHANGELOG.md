@@ -5,6 +5,20 @@ Versions follow [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+### Added — Scale-layer wiring: dispatch + genome-grid arena seed + one pipeline
+
+- **trader-llm registered in the research loop** — `scripts/research-loop.ts` gains
+  `maybeInstallLlmTrader()` (env-gated `TRADER_LLM=1`, auth-checked), registering `traderLlmEvaluator`
+  under the `llm-trader` strategy slug. Mirrors `maybeInstallLlmOracle`; inert by default.
+- **`strategy-factory --arena`** — genome-grid mode over the arena's paper-agent kinds (via each kind's
+  `PARAM_BOUNDS`): **131,976** genome variants across 8 kinds. `--arena --seed [--limit N]` seeds a
+  bounded, **diverse** (round-robin across kinds) batch of `paper_agents` so `arena:tick` can score
+  them and `arena:allocate` can fund them.
+- **`scripts/hft-pipeline.ts`** (`npm run hft:pipeline`) — chains factory → `arena:tick` (best-effort;
+  skipped with a note when no market snapshots) → `arena:allocate --commit` in one command. Verified
+  end-to-end on a fresh DB: 40 diverse agents seeded, allocator funded the top 10 with rationale +
+  evolution_log audit. `tsc --noEmit` clean, `npm run build` green.
+
 ### Added — Scale layer: trader-llm agent + strategy factory + capital allocator
 
 - **`src/lib/agents/trader-llm.ts`** — an LLM Evaluator that can ACT: given its capsule + the

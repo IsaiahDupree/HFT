@@ -18,6 +18,8 @@
  */
 import "./_env.ts";
 import { db } from "../src/lib/db/client.ts";
+import { getParamBounds, parseGenome, randomGenome, type Genome, type GenomeKind } from "../src/lib/arena/genome.ts";
+import { getCurrentGeneration, insertPaperAgent, listAllAgentsForGen, setGenerationAgentCount, startGeneration } from "../src/lib/arena/db.ts";
 
 type Grid = Record<string, Array<number | string>>;
 type Family = {
@@ -144,7 +146,130 @@ function flag(name: string): boolean {
   return process.argv.includes(name);
 }
 
+// ---------------------------------------------------------------------------
+// Arena mode (--arena): generate a genome GRID over the arena's paper-agent
+// kinds (using each kind's PARAM_BOUNDS), and seed bounded paper_agents so the
+// existing arena:tick can score them and arena:allocate can fund them. This is
+// the factory output that feeds the arena→allocator pipeline.
+// ---------------------------------------------------------------------------
+
+// Kinds with clean numeric/string bounds (skip ones needing wallet/token pools
+// or recursive sub-genomes — those seed best via arena:init).
+const ARENA_KINDS: GenomeKind[] = [
+  "cb_breakout", "cb_mean_reversion", "cb_momentum_burst",
+  "poly_fade_spike", "poly_breakout", "category_specialist",
+  "poly_short_binary_directional", "random_walk_baseline",
+];
+
+function discretize(b: [number, number] | string[], pts: number): Array<number | string> {
+  if (Array.isArray(b) && b.length === 2 && typeof b[0] === "number") {
+    const [lo, hi] = b as [number, number];
+    if (pts <= 1 || lo === hi) return [lo];
+    const out: number[] = [];
+    for (let i = 0; i < pts; i++) out.push(Math.round((lo + ((hi - lo) * i) / (pts - 1)) * 1e6) / 1e6);
+    return out;
+  }
+  const list = b as string[];
+  return list.length ? list : ["any"];
+}
+
+function genomeGridSize(kind: GenomeKind, pts: number): number {
+  return Object.values(getParamBounds(kind)).reduce((acc, b) => acc * discretize(b, pts).length, 1);
+}
+
+/** Yield validated genomes across the param grid for one kind (base filled by
+ *  randomGenome so opaque fields are valid; grid overrides the bounded params). */
+function* enumerateGenomeGrid(kind: GenomeKind, pts: number): Generator<Genome> {
+  const bounds = getParamBounds(kind);
+  const keys = Object.keys(bounds);
+  const opts = keys.map((k) => discretize(bounds[k], pts));
+  const base = randomGenome(() => 0.5, kind);
+  const baseParams = (base as { params: Record<string, unknown> }).params;
+  const sizes = opts.map((o) => o.length);
+  const idx = new Array(keys.length).fill(0);
+  while (true) {
+    const params: Record<string, unknown> = { ...baseParams };
+    keys.forEach((k, i) => (params[k] = opts[i][idx[i]]));
+    try {
+      yield parseGenome(JSON.stringify({ kind, params })); // validate against the Zod schema
+    } catch {
+      /* skip grid points the schema rejects (e.g. an int-only field) */
+    }
+    let carry = keys.length - 1;
+    while (carry >= 0) {
+      idx[carry]++;
+      if (idx[carry] < sizes[carry]) break;
+      idx[carry] = 0;
+      carry--;
+    }
+    if (carry < 0) break;
+  }
+}
+
+function rid(): string {
+  // short non-crypto suffix to keep paper_agents.name unique across runs
+  return Math.floor(Math.random() * 1e9).toString(36);
+}
+
+function runArena(doSeed: boolean, limit: number): void {
+  let total = 0;
+  console.log("strategy-factory --arena — genome-grid population for the arena\n");
+  for (const kind of ARENA_KINDS) {
+    const n = genomeGridSize(kind, 3);
+    total += n;
+    console.log(`  ${kind.padEnd(30)} ${n.toLocaleString().padStart(10)} genomes`);
+  }
+  console.log(`\n  TOTAL: ${total.toLocaleString()} genome variants across ${ARENA_KINDS.length} arena kinds.`);
+
+  if (!doSeed) {
+    console.log(`\n  DRY RUN — no DB writes. Re-run with --arena --seed [--limit N] to seed paper_agents into the arena.`);
+    return;
+  }
+
+  const handle = db();
+  let gen = getCurrentGeneration();
+  let genId: number;
+  let genNumber: number;
+  if (!gen) {
+    genNumber = 0;
+    genId = startGeneration(0, undefined, "strategy-factory genome-grid seed");
+    console.log(`\n  (no open generation — created gen 0)`);
+  } else {
+    genId = gen.id;
+    genNumber = gen.gen_number;
+  }
+
+  let seeded = 0;
+  // Round-robin across kinds so a bounded seed gets a DIVERSE population
+  // (5-per-kind for --limit 40) instead of exhausting one kind first.
+  const gens = ARENA_KINDS.map((k) => enumerateGenomeGrid(k, 3));
+  const done = new Set<number>();
+  const tx = handle.transaction(() => {
+    while (seeded < limit && done.size < gens.length) {
+      for (let gi = 0; gi < gens.length && seeded < limit; gi++) {
+        if (done.has(gi)) continue;
+        const nx = gens[gi].next();
+        if (nx.done) { done.add(gi); continue; }
+        insertPaperAgent({
+          name: `gf-${ARENA_KINDS[gi]}-${rid()}`,
+          generation: genNumber,
+          genome: nx.value,
+          introduced_by: "machine:strategy-factory",
+          cash_usd_start: 100,
+        });
+        seeded++;
+      }
+    }
+  });
+  tx();
+  setGenerationAgentCount(genId, listAllAgentsForGen(genNumber).length);
+  console.log(`\n  SEEDED ${seeded} paper_agents into gen ${genNumber} (limit ${limit}). Run \`npm run arena:tick\` to score them, then \`npm run arena:allocate\`.`);
+}
+
 function main(): void {
+  if (process.argv.includes("--arena")) {
+    return runArena(process.argv.includes("--seed"), Number(arg("--limit") ?? 200));
+  }
   const onlyFamily = arg("--family");
   const doSeed = flag("--seed");
   const limit = Number(arg("--limit") ?? (doSeed ? 200 : 0));

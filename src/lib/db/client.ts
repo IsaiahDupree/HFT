@@ -60,6 +60,22 @@ function runLightMigrations(handle: Database.Database): void {
     handle.exec(`ALTER TABLE poly_binaries ADD COLUMN event_slug TEXT;`);
   }
 
+  // 2026-05-30: market_snapshots.category — classifyMarket() tag written by the
+  // snapshot worker and read by the arena TickContext. schema.sql now defines it
+  // for fresh DBs; this ALTER backfills DBs created before the column existed
+  // (without it, every Polymarket snapshot write + poly tick read throws
+  // "no column named category").
+  if (!hasColumn("market_snapshots", "category")) {
+    handle.exec(`ALTER TABLE market_snapshots ADD COLUMN category TEXT;`);
+  }
+
+  // 2026-05-30: paper_generations.tick_count — the per-generation tick counter
+  // that drives the auto-evolve trigger. Missing on DBs created before it was
+  // tracked (arena:tick's incrementGenerationTickCount throws without it).
+  if (!hasColumn("paper_generations", "tick_count")) {
+    handle.exec(`ALTER TABLE paper_generations ADD COLUMN tick_count INTEGER NOT NULL DEFAULT 0;`);
+  }
+
   // 2026-05-26: drop the FK constraints on order_events.agent_id/capsule_id.
   // The schema's intent is "deliberately NO foreign keys" so a rejection log
   // entry can be written even when the referenced row is missing (e.g. paper
@@ -102,6 +118,7 @@ function runLightMigrations(handle: Database.Database): void {
   // nullable — existing capsules continue to work without these populated.
   // Populated by scripts/infer-capsule-diversity.ts post-migration.
   for (const [col, ddl] of [
+    ["paper_agent_id",         "paper_agent_id INTEGER"],
     ["strategy_family",        "strategy_family TEXT"],
     ["asset_class",            "asset_class TEXT"],
     ["allowed_assets_json",    "allowed_assets_json TEXT"],

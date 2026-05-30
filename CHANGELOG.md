@@ -5,6 +5,27 @@ Versions follow [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed — fresh-DB schema drift (arena couldn't run / Polymarket data dropped)
+
+`schema.sql` had drifted from the runtime schema the code expects, so a freshly-built DB (new
+clone / CI) failed across the data → score → allocate path. Fixed at the source (schema.sql for
+fresh DBs + idempotent `ALTER` migrations in `db/client.ts` for existing DBs, matching the
+existing migration pattern):
+- `market_snapshots.category` — written by the snapshot worker + read by the arena TickContext;
+  its absence dropped **all** Polymarket snapshots ("no column named category").
+- `realtime_ticks` table — read by `buildLiveTickContext`; never created on fresh DBs.
+- `capsules.paper_agent_id` — the arena↔capsule binding (championship/auto-promote/live-capsule).
+- `paper_generations.tick_count` — the auto-evolve tick counter.
+With these, `npm run worker:snapshot` pulls real data (Polymarket + Coinbase + short binaries +
+candles) and `npm run arena:tick` scores the population — verified end-to-end from a fresh DB.
+
+### Changed — hft:pipeline now obtains data first
+
+`scripts/hft-pipeline.ts` gains a leading `worker:snapshot` step (`--snaps N`) so one
+`npm run hft:pipeline` does **obtain-data → seed → score → allocate**. With live data + real
+scores the allocator funds only proven positive-fitness agents; offline it falls back to an even
+split so the wiring stays visible.
+
 ### Added — Scale-layer wiring: dispatch + genome-grid arena seed + one pipeline
 
 - **trader-llm registered in the research loop** — `scripts/research-loop.ts` gains

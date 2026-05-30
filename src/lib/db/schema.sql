@@ -92,10 +92,24 @@ CREATE TABLE IF NOT EXISTS market_snapshots (
   volume_24h           REAL,
   open_interest        REAL,
   liquidity_usd        REAL,
+  category             TEXT,                          -- classifyMarket() tag; set by the snapshot worker
   captured_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_snap_token_time ON market_snapshots(token_id, captured_at DESC);
+
+-- Sub-minute crypto WS ticks (worker:realtime). The arena TickContext reads the
+-- freshest tick per product to override stale REST snapshot prices. Written by
+-- src/lib/arena/realtime-ticks.ts; empty until `npm run worker:realtime` runs.
+CREATE TABLE IF NOT EXISTS realtime_ticks (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol      TEXT NOT NULL,
+  product_id  TEXT NOT NULL,
+  price       REAL NOT NULL,
+  source      TEXT,
+  ts_unix     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_realtime_ticks_product_ts ON realtime_ticks(product_id, ts_unix DESC);
 
 -- Performance summary per strategy_version, recomputed by the research loop.
 CREATE TABLE IF NOT EXISTS performance_metrics (
@@ -300,6 +314,7 @@ CREATE TABLE IF NOT EXISTS capsules (
   id                          TEXT PRIMARY KEY,                 -- UUID
   agent_id                    INTEGER REFERENCES agents(id) ON DELETE CASCADE,
   strategy_id                 INTEGER REFERENCES strategies(id) ON DELETE SET NULL,
+  paper_agent_id              INTEGER,                          -- bound arena paper_agent (championship/auto-promote)
   name                        TEXT NOT NULL,
   status                      TEXT NOT NULL DEFAULT 'draft',    -- draft|paper|live|paused|stopped|closed
   -- Capital
@@ -459,6 +474,7 @@ CREATE TABLE IF NOT EXISTS paper_generations (
   started_at               TEXT NOT NULL DEFAULT (datetime('now')),
   sealed_at                TEXT,
   n_agents                 INTEGER NOT NULL DEFAULT 0,
+  tick_count               INTEGER NOT NULL DEFAULT 0,            -- ticks since gen opened (auto-evolve trigger)
   n_alive_at_seal          INTEGER,
   n_promoted_children      INTEGER,                              -- how many top agents bred children
   top_paper_agent_id       INTEGER REFERENCES paper_agents(id),

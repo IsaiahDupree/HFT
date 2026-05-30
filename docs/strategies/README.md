@@ -33,7 +33,7 @@ implement, not the family abstraction.
 | 1 | **Market making (passive liquidity)** | Quote-driven baseline · Avellaneda-Stoikov inventory-aware · Queue-position aware · Order-book imbalance enhanced | [market-making-quote-driven.md](./market-making-quote-driven.md) ✅ |
 | 2 | **Cross-venue arbitrage** | CEX-CEX spot · Perp-spot basis · Triangular FX/crypto · Equities NBBO/SOR · Polymarket complement-sum · Polymarket cross-resolver | [cross-venue-arbitrage.md](./cross-venue-arbitrage.md) ✅ |
 | 3 | **Statistical arbitrage (pairs/cointegration)** | Engle-Granger pairs · Johansen baskets · ETF arb (creation/redemption) · Lead-lag · Index arb | [pairs-trading-cointegration.md](./pairs-trading-cointegration.md) ✅ |
-| 4 | **Microstructure signal trading** | Order-book imbalance (OBI) · Microprice deviation · Sweep detection · Trade-flow imbalance (TFI) · Queue-burst | 📝 `microstructure-signals.md` (planned) |
+| 4 | **Microstructure signal trading** | Order-book imbalance (OBI) · Microprice · Order-flow imbalance (OFI) · Trade-flow imbalance (TFI) · VPIN toxicity · Sweep detection · Iceberg detection · Queue-burst | [microstructure-signals.md](./microstructure-signals.md) ✅ |
 | 5 | **Latency arbitrage** | Cross-venue stale-quote · Tick-by-tick lead-lag (futures→cash) · Listing/delisting front-run · Oracle update front-run (on-chain) | 📝 `latency-arbitrage.md` (planned) |
 | 6 | **Execution algorithms** | TWAP · VWAP · POV (participation) · Implementation Shortfall · Adaptive (alpha-aware) · Iceberg/hidden | 📝 `execution-algos.md` (planned) |
 | 7 | **Basis & funding trading** | Perp-spot cash-and-carry · Cross-exchange funding spread · Futures-spot calendar roll · Borrow-lend rate arb | 📝 `basis-funding.md` (planned — referenced from `src/lib/hft/basis.ts`) |
@@ -113,7 +113,84 @@ implements.
 
 ---
 
-## 5. Reading order
+## 5. The agentic layer — where these primitives get consumed
+
+The strategy docs in this folder define the **primitives** — math, parameters,
+fill models, code skeletons. They're meant to be consumed by *something* that
+picks which strategy to deploy with what parameters at any given moment. In
+this repo that "something" is a two-layer agentic stack (the parallel
+direction of work — see `docs/blueprint/BLUEPRINT.md` for its origin story
+synthesized from 4 video-tutorial transcripts).
+
+```
+                       ┌─────────────────────────────────────┐
+                       │  Capital allocator                   │
+                       │  src/lib/arena/allocator.ts          │  ← decides WHICH agents get capital
+                       │  scripts/arena-allocate.ts           │     based on arena fitness + diversity
+                       └──────────────┬───────────────────────┘
+                                      │ grants capsules
+                                      ▼
+                       ┌─────────────────────────────────────┐
+                       │  LLM trader-as-agent                 │
+                       │  src/lib/agents/trader-llm.ts        │  ← given capsule + signals, emits
+                       │  prompts/llm-trader-persona.v1.md    │     ONE trade intent per tick
+                       └──────────────┬───────────────────────┘
+                                      │ intent
+                                      ▼
+                       ┌─────────────────────────────────────┐
+                       │  Execution gate                      │
+                       │  src/lib/venue/ExecutionRouter       │  ← halt → capsule → risk gates,
+                       │  src/lib/risk/RiskEngine             │     idempotent submit, hash-chained log
+                       └──────────────┬───────────────────────┘
+                                      │ orders
+                                      ▼
+                       ┌─────────────────────────────────────┐
+                       │  Venue adapters                      │
+                       │  src/lib/venue/adapters/{coinbase,   │  ← Coinbase, Polymarket, dYdX, ...
+                       │     polymarket, sim}.ts              │
+                       └─────────────────────────────────────┘
+
+                       ┌─────────────────────────────────────┐
+                       │  Strategy factory (offline)          │
+                       │  scripts/strategy-factory.ts         │  ← sweeps parameter grids from these
+                       │                                      │     docs into 10^5+ strategy_version rows
+                       └─────────────────────────────────────┘
+
+                       ┌─────────────────────────────────────┐
+                       │  Sim-lab (Python reference)          │
+                       │  research/sim-lab/                   │  ← runs the same loop on real replayed
+                       │                                      │     candles; risk-adjusted multi-window
+                       │                                      │     promotion verdict before going live
+                       └─────────────────────────────────────┘
+```
+
+**How a strategy doc feeds the stack:**
+
+1. **The parameter table** in §6 of every deep-dive becomes the grid `scripts/strategy-factory.ts` sweeps. One "MM quote-driven" doc with 8 parameters and 5 values each yields ~390k strategy variants the arena can rank.
+2. **The code skeleton** in §9 becomes the actual `src/lib/strategies/<name>.ts` module. The LLM trader doesn't write trading code — it picks among these implemented primitives and proposes parameters.
+3. **The fill model + backtest design** (§7-8) becomes the test harness that scores each variant in `research/sim-lab/` before any of it touches `paper` or `live` stages (see `src/lib/stages/`).
+4. **The implementation path** (§10) tells you where to add the venue adapter and how to register the engine with `src/lib/risk/kill-switch.ts`.
+
+**Where the LLM agent vs. classical strategy distinction matters:**
+
+- **Classical strategies** (these docs): the decision logic is hard-coded math. Reproducible bit-for-bit. Good for fast loops (MM, OBI scalping) and for the *implementations* the LLM agent invokes.
+- **LLM-driven agent** (`trader-llm.ts`): the decision logic is a Claude evaluation per tick. Necessarily slower (~seconds per decision) and non-deterministic. Good for *meta-decisions* (which strategy to run now, when to flatten before news) and for novel-pattern reasoning the hard-coded primitives can't express.
+
+The honest measured result from the sim-lab: **a single LLM scalper is
+near-break-even**. The system's edge is the ensemble — many strategies +
+many agents + arena allocator routing capital to whatever proves edge.
+That's why this dossier focuses on the strategy *primitives*: more
+primitives in the menu → more variants in the factory → more agents
+in the arena → more chances for the allocator to find positive expected
+value. The docs are the alpha source; the agent layer is the delivery
+mechanism.
+
+For the full mapping of blueprint concepts → repo modules, see
+[`docs/blueprint/INTEGRATION.md`](../blueprint/INTEGRATION.md).
+
+---
+
+## 6. Reading order
 
 If you're picking which strategy to implement next:
 
@@ -121,11 +198,12 @@ If you're picking which strategy to implement next:
 2. **Read** [`market-making-quote-driven.md`](./market-making-quote-driven.md) — the workhorse. Most of your edge sources are variants of "be a better quote setter."
 3. **Read** [`cross-venue-arbitrage.md`](./cross-venue-arbitrage.md) — the cheapest edge to verify. If your arb math doesn't pencil, your MM math won't either.
 4. **Read** [`pairs-trading-cointegration.md`](./pairs-trading-cointegration.md) — the slowest edge in the dossier. Useful even at T4, doesn't compete with co-located firms.
-5. **Pick one family with a "not yet" status** in §4 and write the corresponding `src/lib/strategies/<name>.ts` + a test file in `tests/unit/`.
+5. **Read** [`docs/blueprint/INTEGRATION.md`](../blueprint/INTEGRATION.md) for the full agentic-layer integration map (capsule + risk gate + allocator pattern, with concrete file pointers).
+6. **Pick one family with a "not yet" status** in §4 and write the corresponding `src/lib/strategies/<name>.ts` + a test file in `tests/unit/`.
 
 ---
 
-## 6. Doc structure (what every deep-dive contains)
+## 7. Doc structure (what every deep-dive contains)
 
 Every per-strategy doc in this folder follows the same shape so they're
 skim-able and comparable:
@@ -147,7 +225,7 @@ contributing a new strategy doc, copy that file as your starting point.
 
 ---
 
-## 7. References & primary sources
+## 8. References & primary sources
 
 The taxonomy here draws on the following surveys and primary papers. Per-doc
 references are inline in each strategy file.
@@ -175,7 +253,7 @@ references are inline in each strategy file.
 
 ---
 
-## 8. Disclaimer
+## 9. Disclaimer
 
 Everything here is for the operator of a proof-of-concept HFT system to learn
 from. None of this is investment advice. Past edges close. Backtested

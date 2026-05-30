@@ -103,7 +103,9 @@
     "hft:pipeline": "tsx scripts/hft-pipeline.ts",
     "arena:review": "tsx scripts/review-arena.ts",
     "backtest:mm": "tsx scripts/backtest-mm.ts",
-    "capture:l2": "tsx scripts/capture-l2.ts"
+    "capture:l2": "tsx scripts/capture-l2.ts",
+    "ingest:history": "tsx scripts/ingest-history.ts",
+    "backtest:history": "tsx scripts/backtest-history.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

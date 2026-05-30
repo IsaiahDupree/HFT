@@ -97,7 +97,9 @@
     "worker:portfolio-snapshot": "tsx scripts/worker-portfolio-snapshot.ts",
     "backfill:strategy-regimes": "tsx scripts/backfill-strategy-regimes.ts",
     "init:reserve-capsule": "tsx scripts/init-reserve-capsule.ts",
-    "scan:complement-sum": "tsx scripts/scan-complement-sum.ts"
+    "scan:complement-sum": "tsx scripts/scan-complement-sum.ts",
+    "strategy:factory": "tsx scripts/strategy-factory.ts",
+    "arena:allocate": "tsx scripts/arena-allocate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

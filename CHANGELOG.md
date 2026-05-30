@@ -5,6 +5,24 @@ Versions follow [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+### Added — Scale layer: trader-llm agent + strategy factory + capital allocator
+
+- **`src/lib/agents/trader-llm.ts`** — an LLM Evaluator that can ACT: given its capsule + the
+  current signals it asks Claude (OAuth-first, cached, JSON-schema, like `oracle-llm`) for one
+  trade decision and returns a `submit-order` verdict. Never touches a venue directly — the intent
+  flows through `ExecutionRouter` (halt → capsule → risk gate). Inert until registered in the
+  research-loop dispatch. Driven by `prompts/llm-trader-persona.v1.md`.
+- **`scripts/strategy-factory.ts`** (`npm run strategy:factory`) — parameter-grid generator over the
+  6 strategy families; the default grids fan out to **106,656** distinct specs. Dry-run by default;
+  `--seed [--limit N]` seeds a bounded sample as `strategy_versions` at `stage='sim'`.
+- **`src/lib/arena/allocator.ts`** + **`scripts/arena-allocate.ts`** (`npm run arena:allocate`) — the
+  capital allocator ("which agents get a capsule and why"): pure, fitness-weighted, concentration-
+  capped sizing over the arena leaderboard, with a written rationale per agent. Dry-run by default;
+  `--commit` appends a `capital-allocation` audit event to `evolution_log`. Unit-tested
+  (`tests/unit/allocator.test.ts`, 3/3).
+- Verified: `npx tsc --noEmit` clean, `npm run build` green, allocator tests pass, factory + allocator
+  run end-to-end on real DB rows.
+
 ### Added — Agentic-trading blueprint + Python sim-lab reference
 
 - **Video intelligence** (`docs/blueprint/`) — 4 "All About AI" agentic-trading videos

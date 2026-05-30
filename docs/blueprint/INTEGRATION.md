@@ -35,16 +35,23 @@ The blueprint is therefore **not a rebuild** — it's three additions on top of 
    then grants/sizes/repurposes capsules with a **written rationale** logged to `evolution_log`.
    This generalizes the videos' persona-fit 1–10 scoring into capital routing.
 
-## Concrete next moves (idiomatic to this repo)
+## Concrete moves — BUILT ✅ (this is now shipped, not just planned)
 
 ```
-src/lib/agents/trader-llm.ts        # new Evaluator: capsule + heartbeat view -> submit-order verdict
-                                    #   uses @anthropic-ai/sdk (OAuth-first, like oracle-llm),
-                                    #   JSON-schema output, prompts/llm-trader-persona.v1.md
-scripts/strategy-factory.ts         # param-grid -> strategy_versions(spec_json) at stage:sim, bulk seed
-src/lib/arena/allocator.ts          # leaderboard + capsules -> capsule grants + rationale (evolution_log)
-scripts/arena-allocate.ts           # run the allocator pass; dry-run by default
+src/lib/agents/trader-llm.ts        # ✅ Evaluator: capsule + signals -> submit-order verdict
+                                    #    @anthropic-ai/sdk (OAuth-first, like oracle-llm),
+                                    #    JSON-schema output, prompts/llm-trader-persona.v1.md
+scripts/strategy-factory.ts         # ✅ param-grid -> 106,656 specs; --seed inserts strategy_versions
+                                    #    at stage:sim (npm run strategy:factory)
+src/lib/arena/allocator.ts          # ✅ leaderboard + budget -> capsule grants + rationale (pure, tested)
+scripts/arena-allocate.ts           # ✅ allocator pass; dry-run, --commit logs to evolution_log
+                                    #    (npm run arena:allocate)
 ```
+
+Wiring still open (next): register `traderLlmEvaluator` in the research-loop dispatch so its
+`submit-order` intents actually flow to the router under a sim capsule; have `strategy-factory --seed`
+feed the arena tick; and let `arena-allocate --commit` optionally create/size capsules (today it audits
+to `evolution_log` and leaves capsule activation as an operator action).
 
 Promotion stays gated: a new agent/strategy only leaves `sim` after consistent risk-adjusted green
 across many `arena:tick` passes — exactly the multi-window verdict the Python sim-lab already

@@ -18,6 +18,21 @@ import { acceleration, loadRecentCandles, loadRecentCandlesFromCoindesk, velocit
 import { recentFillsForWalletInCategory, walletWinRateByCategory } from "@/lib/wallet/category-stats";
 import { peekOracleCache } from "./llm-oracle";
 import { assetToFeed, getBinaryMeta, type BinaryAsset } from "./short-binaries";
+import { takerFee, makerRebate, type FeeCategory } from "@/lib/strategies/as-market-maker";
+
+/** Map a classifyMarket() category string to a Polymarket V2 fee category. */
+function mapFeeCategory(cat?: string): FeeCategory {
+  switch (cat) {
+    case "elections": case "politics": return "politics";
+    case "geopolitics": return "geopolitics";
+    case "sports": return "sports";
+    case "weather": return "weather";
+    case "tech": return "tech";
+    case "crypto": case "5min-binary": case "15min-binary": return "crypto";
+    case "economics": case "macro": case "finance": return "finance";
+    default: return "other";
+  }
+}
 import type {
   LiveAgent, PaperTradeRow, Position, Signal, Snapshot, SnapshotWindow, TickContext, Venue,
 } from "./types";
@@ -253,14 +268,22 @@ function decidePolyMarketMaker(g: Extract<Genome, { kind: "polymarket_market_mak
   const win = ctx.snapshots.get(mid)!;
   const px = win.latest.price;
   const side: "BUY" | "SELL" = agent.entries_count % 2 === 0 ? "BUY" : "SELL";
-  // Each side collects HALF the spread when its target hits.
-  const halfSpread = g.params.spread_pts / 200;
+  // Fee-aware spread (Polymarket V2): NEVER quote inside the round-trip taker fee,
+  // and fold in the maker rebate as positive edge (the handbook's core economics —
+  // see src/lib/strategies/as-market-maker.ts). Capture HALF the spread per side.
+  const sizeUsd = Math.min(g.params.entry_size_usd, agent.cash_usd_current);
+  const cat = mapFeeCategory(win.latest.category);
+  const feePerShare = sizeUsd > 0 ? takerFee(px, sizeUsd, cat) / sizeUsd : 0;
+  const rebatePerShare = sizeUsd > 0 ? makerRebate(px, sizeUsd, cat) / sizeUsd : 0;
+  // half-spread must clear the per-share fee with margin; rebate widens our edge.
+  const halfSpread = Math.max(g.params.spread_pts / 200, feePerShare * 1.25) - rebatePerShare;
+  if (halfSpread <= 0) return holdSignal(); // can't profit after fees in this market
   const target = side === "BUY" ? px + halfSpread : px - halfSpread;
   const stop = side === "BUY" ? px - g.params.stop_pts / 100 : px + g.params.stop_pts / 100;
   return {
     kind: "entry", venue: "sim-poly", market_id: mid, side,
-    size_usd: Math.min(g.params.entry_size_usd, agent.cash_usd_current),
-    rationale: `MM-${side}@${px.toFixed(3)} spread=${g.params.spread_pts}pt`,
+    size_usd: sizeUsd,
+    rationale: `MM-${side}@${px.toFixed(3)} ${cat} δ=${(halfSpread * 100).toFixed(2)}pt fee=${(feePerShare * 100).toFixed(2)} rebate=${(rebatePerShare * 100).toFixed(2)}`,
     target_price: target, stop_price: stop,
     time_stop_at: new Date(new Date(ctx.now).getTime() + g.params.time_stop_h * 3_600_000).toISOString(),
   };

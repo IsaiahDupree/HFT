@@ -79,3 +79,4 @@ research/**/.venv/
 *.egg-info/
 # heavy video-intelligence raw media (keep the extracted OCR/prompts under docs/blueprint/<id>/)
 docs/blueprint/raw/
+sources/

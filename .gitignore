@@ -57,6 +57,7 @@ test-results/
 .DS_Store
 .vscode/
 .idea/
+.claude/
 Thumbs.db
 ~$*
 *.swp

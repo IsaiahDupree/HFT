@@ -1,0 +1,26 @@
+#!/bin/zsh -l
+# One arena cycle: obtain fresh real market data, then tick the population once.
+# Lock-guarded so overlapping invocations don't pile up. Safe to run from cron
+# or the arena-loop.sh wrapper.
+#
+# Schedule every 5 minutes via crontab:
+#   */5 * * * * /bin/zsh -lc '/Users/isaiahdupree/Documents/Software/HFT-work/scripts/arena-cron.sh' >> /tmp/hft-arena.log 2>&1
+#
+# arena:tick auto-evolves every ARENA_EVOLVE_EVERY (default 50) ticks, so a 5-min
+# cadence breeds a new generation roughly every ~4h and the allocator can then be
+# run against an increasingly proven population.
+set -u
+REPO="/Users/isaiahdupree/Documents/Software/HFT-work"
+LOCK="/tmp/hft-arena-cron.lock"
+cd "$REPO" || exit 1
+
+if [ -f "$LOCK" ] && kill -0 "$(cat "$LOCK" 2>/dev/null)" 2>/dev/null; then
+  echo "$(date '+%F %T') skip — previous arena cycle still running"
+  exit 0
+fi
+echo $$ > "$LOCK"
+trap 'rm -f "$LOCK"' EXIT
+
+echo "=== $(date '+%F %T') arena cycle ==="
+npm run --silent worker:snapshot
+npm run --silent arena:tick

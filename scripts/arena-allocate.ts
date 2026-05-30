@@ -14,7 +14,18 @@
 import "./_env.ts";
 import { db } from "../src/lib/db/client.ts";
 import { planAllocations, type AllocationInput } from "../src/lib/arena/allocator.ts";
-import { getCurrentGeneration, listAllAgentsForGen, listAliveAgentsAcrossGens } from "../src/lib/arena/db.ts";
+import { getCurrentGeneration, getPaperAgent, listAllAgentsForGen, listAliveAgentsAcrossGens } from "../src/lib/arena/db.ts";
+import { createCapsule } from "../src/lib/capsules/store.ts";
+
+/** Map an agent's genome kind to the venue its capsule should trade. */
+function venuesForGenome(genomeJson: string): ("polymarket" | "coinbase")[] {
+  try {
+    const kind = String((JSON.parse(genomeJson) as { kind?: string }).kind ?? "");
+    return kind.startsWith("cb_") ? ["coinbase"] : ["polymarket"];
+  } catch {
+    return ["polymarket"];
+  }
+}
 
 function num(name: string, def: number): number {
   const i = process.argv.indexOf(name);
@@ -79,6 +90,44 @@ function main(): void {
       payload: JSON.stringify(plan),
     });
   console.log(`\n  COMMITTED capital-allocation audit event to evolution_log.`);
+
+  // Optionally turn the funded set into REAL (but still sim) capsule rows: a
+  // 'draft' capsule per funded agent, sized to its grant, bound to the
+  // paper_agent. Idempotent — re-running resizes the existing capsule. Capsules
+  // stay 'draft' (no paper/live trading) — activation toward real money remains
+  // a separate operator action (see championship.activateCapsule with its
+  // pre-flight backtest gate).
+  if (process.argv.includes("--create-capsules")) {
+    let created = 0;
+    let resized = 0;
+    for (const d of plan.funded) {
+      const existing = db().prepare(`SELECT id FROM capsules WHERE paper_agent_id = ?`).get(d.agentId) as { id: string } | undefined;
+      if (existing) {
+        db().prepare(
+          `UPDATE capsules SET capital_allocated_usd = @c,
+             capital_available_usd = @c - capital_deployed_usd, updated_at = datetime('now')
+           WHERE id = @id`,
+        ).run({ c: d.grantUsd, id: existing.id });
+        resized++;
+        continue;
+      }
+      const agent = getPaperAgent(d.agentId);
+      const venues = agent ? venuesForGenome(agent.genome_json) : (["polymarket"] as ("polymarket" | "coinbase")[]);
+      const cap = createCapsule({
+        name: `${d.agentName}-capsule`,
+        capitalUsd: d.grantUsd,
+        allowedVenues: venues,
+        maxDailyLossUsd: Math.max(2, d.grantUsd * 0.1),
+        maxTotalDrawdownUsd: Math.max(5, d.grantUsd * 0.3),
+        maxPositionPct: 0.5,
+        maxOpenPositions: 3,
+        maxTradesPerDay: 20,
+      });
+      db().prepare(`UPDATE capsules SET paper_agent_id = ? WHERE id = ?`).run(d.agentId, cap.id);
+      created++;
+    }
+    console.log(`  CAPSULES: created ${created}, resized ${resized} (status=draft/sim, bound to paper_agent; activation stays an operator action).`);
+  }
 }
 
 main();

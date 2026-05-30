@@ -5,6 +5,19 @@ Versions follow [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+### Added — allocator can mint sim capsules + a continuous arena loop
+
+- **`arena:allocate --commit --create-capsules`** — turns the funded set into real (but still
+  **sim/`draft`**) capsule rows: one capsule per funded agent, sized to its grant, venue inferred
+  from the genome kind (cb_* → coinbase, poly_* → polymarket), bound to the `paper_agent_id`.
+  Idempotent (re-running resizes). Capsules stay `draft` — activation toward real money remains a
+  separate operator action gated by `championship.activateCapsule`'s pre-flight backtest.
+- **`scripts/arena-cron.sh`** — one lock-guarded cycle: `worker:snapshot` (real data) + `arena:tick`
+  (score). **`scripts/arena-loop.sh`** — runs a cycle every N seconds (nohup-friendly). A 5-min
+  cadence breeds a new generation ~every 4h (auto-evolve at 50 ticks), so real fitness accrues and
+  the allocator concentrates capital on proven agents over time. Crontab line documented in the
+  script header.
+
 ### Fixed — fresh-DB schema drift (arena couldn't run / Polymarket data dropped)
 
 `schema.sql` had drifted from the runtime schema the code expects, so a freshly-built DB (new

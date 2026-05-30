@@ -24,3 +24,17 @@ trap 'rm -f "$LOCK"' EXIT
 echo "=== $(date '+%F %T') arena cycle ==="
 npm run --silent worker:snapshot
 npm run --silent arena:tick
+
+# Auto-allocate every ALLOCATE_EVERY cycles (default 12 ≈ hourly at 5-min cadence)
+# so the funded capsule set tracks the evolving leaderboard. Funds only proven
+# positive-fitness agents; on early cycles that may be zero (correct discipline).
+ALLOCATE_EVERY="${ALLOCATE_EVERY:-12}"
+ALLOC_BUDGET="${ARENA_ALLOC_BUDGET:-10000}"
+COUNTER_FILE="/tmp/hft-arena-cycle-count"
+n=$(( $(cat "$COUNTER_FILE" 2>/dev/null || echo 0) + 1 ))
+echo "$n" > "$COUNTER_FILE"
+if [ "$ALLOCATE_EVERY" -gt 0 ] && [ $(( n % ALLOCATE_EVERY )) -eq 0 ]; then
+  echo "--- cycle $n: auto-allocate (budget \$$ALLOC_BUDGET) ---"
+  npx tsx scripts/arena-allocate.ts --commit --create-capsules \
+    --budget "$ALLOC_BUDGET" --min-trades 1 --min-fitness 0.00001 2>&1 | grep -E 'funded [0-9]|CAPSULES|COMMITTED'
+fi

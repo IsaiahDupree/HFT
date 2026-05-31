@@ -78,8 +78,33 @@ nowhere near the slam-dunk the in-sample numbers implied. Don't bet the account 
 
 **Implication for the arena:** keep `cb_breakout`/`cb_momentum` genomes (BTC-trend prior is the most
 defensible), but rely on the **live evolve+allocate loop as the final OOS judge** — it's already doing
-exactly the right thing (funding the survivors, culling the losers). Finer entries (hourly bars) +
-position-sizing may lift BTC over the 0.95 bar; that's the next experiment.
+exactly the right thing (funding the survivors, culling the losers).
+
+## 🔬 Hourly bars + inverse-vol sizing — hypothesis FALSIFIED
+The next experiment asked: do **finer entries (hourly bars) + a risk-sizing overlay** lift BTC over the
+DSR > 0.95 bar? We ingested hourly OHLC since origination (**BTC 95,158 · ETH 87,749 · SOL 43,387** bars,
+`--granularity ONE_HOUR`), built an **inverse-vol position-sizing overlay** (`sizing.ts`, chosen by a
+3-design judge panel; no-lookahead proven by a perturbation test — a future close never changes an earlier
+size), scaled the trend windows ×24 so the *same* slow-trend edge is tested at hourly resolution, and —
+critically — **registered every sized config as an extra trial** in the Deflated-Sharpe pool so SR0 is
+deflated honestly (`npm run harden:priors -- --granularity ONE_HOUR --sized`):
+
+| coin | best | PBO | **DSR** | medOOS | folds (OOS) | turn× | verdict |
+|------|------|-----|---------|--------|-------------|-------|---------|
+| **BTC** | sma50d**+vt** | 0.00 | **0.60** | +0.007 | 0.01/−0.00/0.01/0.00 | **0.80** | partial |
+| ETH | sma20d+vt | 0.00 | 0.19 | +0.006 | 0.02/0.00/0.01/0.00 | 0.54 | partial |
+| SOL | don20d | 0.10 | 0.46 | +0.008 | 0.03/0.02/0.00/−0.01 | 1.00 | partial |
+
+**The sizing overlay did its job — and the prior still did NOT harden. DSR FELL 0.94 → 0.60.** The honest
+read: (1) the overlay **reduced turnover** (BTC `turn× 0.80`, ETH `0.54` — *fewer* fees, not more) and kept
+all walk-forward folds OOS-non-negative, exactly as designed; (2) but the per-*hour* trend edge is
+structurally tiny, and **doubling the trial pool (raw + sized) raises SR0**, so the Deflated Sharpe drops.
+Finer bars added noise and trials, not signal. **The DAILY BTC trend prior (DSR 0.94) remains the single
+most defensible representation of the edge** — hourly entries don't strengthen it, and sizing can't
+manufacture statistical significance the hourly signal doesn't carry. This is a *negative result worth
+having*: it falsifies "trade it faster" and re-centers everything on the **live arena loop as the final
+OOS judge**. (Pass-1 deliberately froze posMax=1.0 / conviction OFF to isolate variance-reduction; per-asset
+vol targets or conviction sizing would only add trials to deflate against, not change this conclusion.)
 
 ## Pipeline
 ```

@@ -24,9 +24,11 @@ const std = (a: number[]) => {
   return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length - 1));
 };
 
-/** `positions[i]` ∈ [-1,1] held during bar i→i+1. feeBps charged on |Δposition|. */
-export function runCandleBacktest(candles: DailyCandle[], positions: number[], opts: { feeBps?: number } = {}): CandleResult {
+/** `positions[i]` ∈ [-1,1] held during bar i→i+1. feeBps charged on |Δposition|.
+ *  `periodsPerYear` annualizes Sharpe (daily=365, hourly=8760). */
+export function runCandleBacktest(candles: DailyCandle[], positions: number[], opts: { feeBps?: number; periodsPerYear?: number } = {}): CandleResult {
   const feeBps = opts.feeBps ?? 10;
+  const periodsPerYear = opts.periodsPerYear ?? 365;
   let equity = 1, peak = 1, maxDd = 0;
   const rets: number[] = [];
   let trades = 0, wins = 0, entryEquity = 0;
@@ -49,7 +51,7 @@ export function runCandleBacktest(candles: DailyCandle[], positions: number[], o
   if (inPos && equity > entryEquity) wins++;
 
   const sd = std(rets);
-  const sharpe = sd > 0 ? (mean(rets) / sd) * Math.sqrt(365) : 0;
+  const sharpe = sd > 0 ? (mean(rets) / sd) * Math.sqrt(periodsPerYear) : 0;
   const buyHoldPct = candles.length > 1 ? (candles[candles.length - 1].close / candles[0].close - 1) * 100 : 0;
   return {
     bars: candles.length,

@@ -5,8 +5,10 @@
  * (UNIQUE(product_id,granularity,start_unix) → INSERT OR IGNORE) and resumable.
  *
  *   npx tsx scripts/ingest-history.ts [--from 2014-01-01] [--coins BTC-USD,ETH-USD]
+ *                                     [--granularity ONE_DAY|SIX_HOUR|ONE_HOUR]
  *
  * Gives years of real candles for backtest-history.ts to evaluate strategies on.
+ * Hourly (ONE_HOUR) gives finer entries for the position-sizing experiments.
  */
 import "./_env.ts";
 import { db } from "../src/lib/db/client.ts";
@@ -15,15 +17,18 @@ const DEFAULT_COINS = [
   "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "DOGE-USD", "LTC-USD",
   "ADA-USD", "LINK-USD", "AVAX-USD", "BCH-USD", "DOT-USD", "MATIC-USD",
 ];
-const GRAN_SECONDS = 86400;
-const GRAN_LABEL = "ONE_DAY";
-const PER_REQ_DAYS = 300; // Coinbase max candles/request
+// Coinbase granularity (seconds) → our stored label.
+const GRAN_MAP: Record<string, number> = { ONE_HOUR: 3600, SIX_HOUR: 21600, ONE_DAY: 86400 };
+const PER_REQ = 300; // Coinbase max candles/request (any granularity)
 const API = "https://api.exchange.coinbase.com";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
+const GRAN_LABEL = (arg("--granularity") ?? "ONE_DAY").toUpperCase();
+const GRAN_SECONDS = GRAN_MAP[GRAN_LABEL];
+if (!GRAN_SECONDS) { console.error(`unknown --granularity ${GRAN_LABEL}; use one of ${Object.keys(GRAN_MAP).join("|")}`); process.exit(1); }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Coinbase candle row: [time, low, high, open, close, volume]
@@ -58,12 +63,12 @@ async function fetchWindow(product: string, startIso: string, endIso: string): P
     return n;
   });
 
-  console.log(`ingest-history: ${coins.length} coins, daily, from ${fromIso.slice(0, 10)} → now\n`);
+  console.log(`ingest-history: ${coins.length} coins, ${GRAN_LABEL}, from ${fromIso.slice(0, 10)} → now\n`);
   for (const product of coins) {
     let inserted = 0;
     let fetched = 0;
-    for (let s = start0; s < now; s += PER_REQ_DAYS * GRAN_SECONDS) {
-      const e = Math.min(now, s + PER_REQ_DAYS * GRAN_SECONDS);
+    for (let s = start0; s < now; s += PER_REQ * GRAN_SECONDS) {
+      const e = Math.min(now, s + PER_REQ * GRAN_SECONDS);
       const rows = await fetchWindow(product, new Date(s * 1000).toISOString(), new Date(e * 1000).toISOString());
       fetched += rows.length;
       if (rows.length) inserted += insertMany(product, rows);
@@ -72,8 +77,8 @@ async function fetchWindow(product: string, startIso: string, endIso: string): P
     const range = db().prepare(
       `SELECT COUNT(*) n, MIN(start_unix) mn, MAX(start_unix) mx FROM coinbase_candles WHERE product_id=? AND granularity=?`,
     ).get(product, GRAN_LABEL) as { n: number; mn: number | null; mx: number | null };
-    const fmt = (u: number | null) => (u ? new Date(u * 1000).toISOString().slice(0, 10) : "—");
-    console.log(`  ${product.padEnd(10)} +${String(inserted).padStart(5)} new · total ${String(range.n).padStart(5)} daily candles · ${fmt(range.mn)} → ${fmt(range.mx)}`);
+    const fmt = (u: number | null) => (u ? new Date(u * 1000).toISOString().slice(0, 19).replace("T", " ") : "—");
+    console.log(`  ${product.padEnd(10)} +${String(inserted).padStart(6)} new · total ${String(range.n).padStart(6)} ${GRAN_LABEL} candles · ${fmt(range.mn)} → ${fmt(range.mx)}`);
   }
   console.log(`\nDone. Backtest with: npm run backtest:history`);
 })();

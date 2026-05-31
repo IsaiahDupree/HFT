@@ -800,3 +800,25 @@ CREATE TABLE IF NOT EXISTS oracle_snapshots (
   created_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_oracle_snapshots_asset_ts ON oracle_snapshots(asset, captured_at);
+
+-- Signal intake journal (2dollar-bot golden signals → HFT-work execution bridge).
+-- Every received signal is recorded (shadow record); `routed` flags whether it was
+-- forwarded to submitSingleSideMarket (only when SIGNAL_INTAKE_ENABLED=1).
+CREATE TABLE IF NOT EXISTS signal_intake (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  received_at   INTEGER NOT NULL,
+  source        TEXT,
+  asset         TEXT,
+  recurrence    TEXT,
+  side          TEXT,
+  size_usd      REAL,
+  entry_price   REAL,
+  est_win_prob  REAL,
+  readiness_ok  INTEGER,
+  accepted      INTEGER,
+  reason        TEXT,
+  routed        INTEGER NOT NULL DEFAULT 0,
+  verdict_json  TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_signal_intake_ts ON signal_intake(received_at);

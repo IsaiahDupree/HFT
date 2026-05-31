@@ -10,7 +10,7 @@
  * the current generation row.
  */
 import "./_env.ts";
-import { listAliveAgentsForGen, getCurrentGeneration, persistAgentTick, insertPaperTrade, toLiveAgent } from "../src/lib/arena/db.ts";
+import { listAliveAgentsForGen, getCurrentGeneration, persistAgentTick, persistTradeWithLink, toLiveAgent } from "../src/lib/arena/db.ts";
 import { applySignal, decide, markToMarket } from "../src/lib/arena/sim.ts";
 import { iterTickContexts } from "../src/lib/arena/context.ts";
 import { db } from "../src/lib/db/client.ts";
@@ -40,7 +40,7 @@ for (const ctx of iterTickContexts({ start: startArg, end: endArg, tickIntervalM
     if (signal.kind === "hold") { stats.holds += 1; continue; }
     const res = applySignal(agent, signal, ctx, gen.gen_number);
     if (res.trade) {
-      insertPaperTrade(res.trade);
+      persistTradeWithLink(res); // stamps entry_trade_id so exits link back (linked_entry_id)
       if (res.trade.intent === "entry") stats.entries += 1;
       if (res.trade.intent === "exit")  stats.exits   += 1;
     }

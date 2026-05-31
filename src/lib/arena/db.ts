@@ -146,6 +146,18 @@ export function insertPaperTrade(t: Omit<PaperTradeRow, "id">): number {
   return Number(r.lastInsertRowid);
 }
 
+/** Persist an `applySignal` result's trade and, for ENTRIES, stamp the opened
+ *  position with the new trade id so the eventual EXIT links back via
+ *  linked_entry_id (round-trip PnL attribution + shadow-gate calibration). ALWAYS
+ *  use this instead of a bare `insertPaperTrade(res.trade)` when persisting an
+ *  applySignal result — otherwise positions from that path get null linkage. */
+export function persistTradeWithLink(res: { trade?: Omit<PaperTradeRow, "id">; entryPos?: { entry_trade_id?: number } }): number | undefined {
+  if (!res.trade) return undefined;
+  const id = insertPaperTrade(res.trade);
+  if (res.entryPos) res.entryPos.entry_trade_id = id;
+  return id;
+}
+
 export function listTradesForAgent(agentId: number, limit = 500): PaperTradeRow[] {
   return db().prepare(`SELECT * FROM paper_trades WHERE paper_agent_id = ? ORDER BY id DESC LIMIT ?`).all(agentId, limit) as PaperTradeRow[];
 }

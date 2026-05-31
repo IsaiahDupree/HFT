@@ -11,7 +11,7 @@ import "./_env.ts";
 import {
   listAliveAgentsForGen, listAliveElites, listAliveAgentsWithLiveCapsule,
   getCurrentGeneration, persistAgentTick,
-  insertPaperTrade, toLiveAgent, incrementGenerationTickCount,
+  persistTradeWithLink, toLiveAgent, incrementGenerationTickCount,
 } from "../src/lib/arena/db.ts";
 import { applySignal, decide, markToMarket } from "../src/lib/arena/sim.ts";
 import { buildLiveTickContext } from "../src/lib/arena/context.ts";
@@ -123,11 +123,10 @@ const EVOLVE_EVERY = Number(process.env.ARENA_EVOLVE_EVERY ?? "50");
         if (proceedToSim) {
           const res = applySignal(agent, signal, ctx, gen.gen_number);
           if (res.trade) {
-            const tradeId = insertPaperTrade(res.trade);
-            // Stamp the opened position with its entry trade id so the eventual
-            // EXIT links back (linked_entry_id) — enabling per-round-trip PnL
-            // attribution + calibration of the shadow-gate score.
-            if (res.entryPos) res.entryPos.entry_trade_id = tradeId;
+            // persistTradeWithLink stamps the opened position's entry_trade_id so
+            // the eventual EXIT links back (linked_entry_id) — round-trip PnL
+            // attribution + shadow-gate calibration.
+            persistTradeWithLink(res);
             if (res.trade.intent === "entry") stats.entries += 1;
             if (res.trade.intent === "exit")  stats.exits   += 1;
           }

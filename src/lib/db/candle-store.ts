@@ -89,3 +89,69 @@ export async function upsertCandles(product: string, granularity: string, rows: 
     client.release();
   }
 }
+
+export type SnapshotRow = {
+  condition_id: string; token_id: string; question: string;
+  yes_price: number | null; no_price: number | null; midpoint: number | null;
+  spread: number | null; volume_24h: number | null; open_interest: number | null;
+  liquidity_usd: number | null; category: string | null;
+  captured_at_iso?: string | null; // original SQLite capture time (ISO UTC); falls back to now()
+};
+
+/** Append-only batch insert of Polymarket market snapshots (a time-series log;
+ *  no unique key — callers mirror only NEW rows, so no dedup is needed). */
+export async function insertSnapshots(rows: SnapshotRow[]): Promise<number> {
+  if (!rows.length) return 0;
+  const client = await tsdb().connect();
+  try {
+    let n = 0;
+    const BATCH = 500; // 500 × 12 params = 6000 < pg's 65535 bind limit
+    for (let off = 0; off < rows.length; off += BATCH) {
+      const slice = rows.slice(off, off + BATCH);
+      const vals: unknown[] = [];
+      const tuples = slice.map((r, k) => {
+        const b = k * 12;
+        vals.push(r.condition_id, r.token_id, r.question, r.yes_price, r.no_price, r.midpoint, r.spread, r.volume_24h, r.open_interest, r.liquidity_usd, r.category, r.captured_at_iso ?? null);
+        return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10},$${b + 11},COALESCE($${b + 12}::timestamptz, now()))`;
+      });
+      const res = await client.query(
+        `INSERT INTO market_snapshots (condition_id, token_id, question, yes_price, no_price, midpoint, spread, volume_24h, open_interest, liquidity_usd, category, captured_at)
+         VALUES ${tuples.join(",")}`,
+        vals,
+      );
+      n += res.rowCount ?? 0;
+    }
+    return n;
+  } finally {
+    client.release();
+  }
+}
+
+export type TickRow = { symbol: string; product_id: string; price: number; source: string | null; ts_unix: number };
+
+/** Append-only batch insert of sub-minute crypto ticks. */
+export async function insertTicks(rows: TickRow[]): Promise<number> {
+  if (!rows.length) return 0;
+  const client = await tsdb().connect();
+  try {
+    let n = 0;
+    const BATCH = 2000; // 2000 × 5 params = 10000 < pg's 65535 bind limit
+    for (let off = 0; off < rows.length; off += BATCH) {
+      const slice = rows.slice(off, off + BATCH);
+      const vals: unknown[] = [];
+      const tuples = slice.map((r, k) => {
+        const b = k * 5;
+        vals.push(r.product_id, r.symbol, r.price, r.source, r.ts_unix);
+        return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5})`;
+      });
+      const res = await client.query(
+        `INSERT INTO realtime_ticks (product_id, symbol, price, source, ts_unix) VALUES ${tuples.join(",")}`,
+        vals,
+      );
+      n += res.rowCount ?? 0;
+    }
+    return n;
+  } finally {
+    client.release();
+  }
+}

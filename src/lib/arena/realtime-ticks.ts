@@ -26,6 +26,12 @@ const SYMBOL_TO_PRODUCT: Record<string, string> = {
 const LAST_WRITE: Map<string, number> = new Map();
 const DEBOUNCE_MS = 1000;
 
+// Buffer of ticks awaiting a best-effort warehouse mirror. Bounded so a
+// perpetually-down warehouse can't grow it without limit (drops oldest).
+type BufferedTick = { symbol: string; product_id: string; price: number; source: string; ts_unix: number };
+const TICK_BUFFER: BufferedTick[] = [];
+const TICK_BUFFER_MAX = 5000;
+
 /**
  * Persist a tick if the previous tick for this symbol is older than
  * `DEBOUNCE_MS`. Returns true when written, false when debounced.
@@ -38,11 +44,34 @@ export function persistRealtimeTick(symbol: string, price: number, source = "pol
   const last = LAST_WRITE.get(symbol) ?? 0;
   if (now - last < DEBOUNCE_MS) return false;
   LAST_WRITE.set(symbol, now);
+  const tsUnix = Math.floor(now / 1000);
   db().prepare(
     `INSERT INTO realtime_ticks (symbol, product_id, price, source, ts_unix)
      VALUES (?, ?, ?, ?, ?)`,
-  ).run(symbol.toLowerCase(), productId, price, source, Math.floor(now / 1000));
+  ).run(symbol.toLowerCase(), productId, price, source, tsUnix);
+  // queue for the warehouse mirror (the loop's SQLite write above is canonical-local).
+  if (TICK_BUFFER.length >= TICK_BUFFER_MAX) TICK_BUFFER.shift();
+  TICK_BUFFER.push({ symbol: symbol.toLowerCase(), product_id: productId, price, source, ts_unix: tsUnix });
   return true;
+}
+
+/** Best-effort flush of buffered ticks into the canonical TimescaleDB warehouse.
+ *  Called periodically by the long-running realtime worker (does NOT close the
+ *  shared pool — the worker closes it on shutdown). Toggle ARENA_WAREHOUSE_MIRROR=0.
+ *  On any failure the buffered ticks are re-queued for the next flush. */
+export async function flushTicksToWarehouse(): Promise<{ mirrored: number; error?: string }> {
+  if ((process.env.ARENA_WAREHOUSE_MIRROR ?? "1") !== "1" || TICK_BUFFER.length === 0) return { mirrored: 0 };
+  const batch = TICK_BUFFER.splice(0, TICK_BUFFER.length); // take all, clear buffer
+  try {
+    const { insertTicks } = await import("@/lib/db/candle-store");
+    const mirrored = await insertTicks(batch);
+    return { mirrored };
+  } catch (err) {
+    // re-queue (bounded) so a transient warehouse outage doesn't lose ticks.
+    TICK_BUFFER.unshift(...batch.slice(-TICK_BUFFER_MAX));
+    if (TICK_BUFFER.length > TICK_BUFFER_MAX) TICK_BUFFER.length = TICK_BUFFER_MAX;
+    return { mirrored: 0, error: (err as Error).message };
+  }
 }
 
 /** Delete ticks older than `keepHours` (default 24). Returns rows deleted. */

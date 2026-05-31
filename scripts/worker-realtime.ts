@@ -20,7 +20,8 @@ import "./_env.ts";
 import { ConnectionStatus, PolymarketRealtime, hasClobCreds } from "../src/lib/polymarket/realtime.ts";
 import { insertEvolutionEvent } from "../src/lib/db/queries.ts";
 import { db } from "../src/lib/db/client.ts";
-import { persistRealtimeTick, pruneOldTicks, wsHealth } from "../src/lib/arena/realtime-ticks.ts";
+import { persistRealtimeTick, pruneOldTicks, wsHealth, flushTicksToWarehouse } from "../src/lib/arena/realtime-ticks.ts";
+import { closeTsdb } from "../src/lib/db/candle-store.ts";
 
 // Slug allow-list from env (comma-separated). If empty, subscribe with no filter
 // (firehose — useful for development; not recommended for prod).
@@ -153,6 +154,11 @@ async function main() {
     lastHeartbeatActivityCount = activityCount;
     // Daily prune to keep realtime_ticks small. Cheap one-shot delete.
     const pruned = pruneOldTicks(24);
+    // Best-effort mirror of buffered ticks into the canonical warehouse (fire-and-forget).
+    flushTicksToWarehouse().then((r) => {
+      if (r.error) console.error(`[worker-realtime] warehouse tick-mirror error: ${r.error}`);
+      else if (r.mirrored > 0) console.log(`[worker-realtime] mirrored ${r.mirrored} ticks → warehouse`);
+    });
 
     // F6 stale-tick check: any product silent > STALE_THRESHOLD_SEC?
     const health = wsHealth(STALE_THRESHOLD_SEC);
@@ -179,14 +185,15 @@ async function main() {
     });
   }, HEARTBEAT_INTERVAL_MS);
 
-  const stop = (signal: string) => {
+  const stop = async (signal: string) => {
     console.log(`[worker-realtime] ${signal} received — disconnecting`);
     clearInterval(heartbeat);
     rt.disconnect();
+    try { await flushTicksToWarehouse(); await closeTsdb(); } catch { /* ignore */ }
     process.exit(0);
   };
-  process.on("SIGINT", () => stop("SIGINT"));
-  process.on("SIGTERM", () => stop("SIGTERM"));
+  process.on("SIGINT", () => { void stop("SIGINT"); });
+  process.on("SIGTERM", () => { void stop("SIGTERM"); });
 }
 
 main().catch((err) => {

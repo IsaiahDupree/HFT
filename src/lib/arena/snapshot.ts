@@ -69,7 +69,8 @@ export type SnapshotPassResult = {
   poly_count: number;
   coinbase_count: number;
   candle_count: number;
-  warehouse_mirrored: number;   // ONE_MINUTE candles best-effort upserted into the TimescaleDB warehouse
+  warehouse_mirrored: number;            // ONE_MINUTE candles best-effort upserted into the warehouse
+  snapshots_mirrored: number;            // market_snapshots best-effort mirrored into the warehouse
   short_binaries_count: number;
   short_binaries_by_asset: Record<string, number>;
   latency_ms: number;
@@ -77,28 +78,36 @@ export type SnapshotPassResult = {
 };
 
 type RawCandle = { start: string; low: string; high: string; open: string; close: string; volume: string };
+type SnapRow = { condition_id: string; token_id: string; question: string; yes_price: number | null; no_price: number | null; midpoint: number | null; spread: number | null; volume_24h: number | null; open_interest: number | null; liquidity_usd: number | null; category: string | null; captured_at: string };
 
-/** Best-effort mirror of ONE_MINUTE candles into the TimescaleDB warehouse so it
- *  stays the canonical store, while SQLite remains the loop's resilient local
- *  cache. Dynamic import + try/catch so a missing `pg` dep or a down warehouse
- *  (Docker off) degrades gracefully and never breaks the live snapshot pass.
- *  Toggle with ARENA_WAREHOUSE_MIRROR=0. Opens and closes its own pool so the
- *  short-lived worker process can still exit cleanly. */
-async function mirrorCandlesToWarehouse(batches: Array<{ product: string; rows: RawCandle[] }>): Promise<{ mirrored: number; error?: string }> {
-  if ((process.env.ARENA_WAREHOUSE_MIRROR ?? "1") !== "1" || batches.length === 0) return { mirrored: 0 };
+/** Best-effort mirror of this pass's ONE_MINUTE candles AND new market_snapshots
+ *  into the TimescaleDB warehouse so it stays the canonical store, while SQLite
+ *  remains the loop's resilient local cache. Dynamic import + try/catch so a
+ *  missing `pg` dep or a down warehouse (Docker off) degrades gracefully and
+ *  never breaks the live pass. Toggle with ARENA_WAREHOUSE_MIRROR=0. Opens and
+ *  closes its own pool so the short-lived worker process can still exit cleanly. */
+async function mirrorToWarehouse(
+  candleBatches: Array<{ product: string; rows: RawCandle[] }>,
+  snapshots: SnapRow[],
+): Promise<{ candles: number; snapshots: number; error?: string }> {
+  if ((process.env.ARENA_WAREHOUSE_MIRROR ?? "1") !== "1") return { candles: 0, snapshots: 0 };
+  if (candleBatches.length === 0 && snapshots.length === 0) return { candles: 0, snapshots: 0 };
   let store: typeof import("../db/candle-store") | undefined;
   try {
     store = await import("../db/candle-store");
-    let mirrored = 0;
-    for (const b of batches) {
+    let candles = 0;
+    for (const b of candleBatches) {
       const rows = b.rows
         .map((c) => ({ start_unix: Number(c.start), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close), volume: Number(c.volume ?? 0) }))
         .filter((r) => Number.isFinite(r.start_unix) && Number.isFinite(r.open));
-      mirrored += await store.upsertCandles(b.product, "ONE_MINUTE", rows);
+      candles += await store.upsertCandles(b.product, "ONE_MINUTE", rows);
     }
-    return { mirrored };
+    // SQLite captured_at "YYYY-MM-DD HH:MM:SS" (UTC) → ISO so the warehouse keeps the real capture time.
+    const snapRows = snapshots.map((s) => ({ ...s, captured_at_iso: s.captured_at ? s.captured_at.replace(" ", "T") + "Z" : null }));
+    const snapsMirrored = await store.insertSnapshots(snapRows);
+    return { candles, snapshots: snapsMirrored };
   } catch (err) {
-    return { mirrored: 0, error: (err as Error).message };
+    return { candles: 0, snapshots: 0, error: (err as Error).message };
   } finally {
     try { await store?.closeTsdb(); } catch { /* ignore */ }
   }
@@ -150,6 +159,8 @@ function recordCoinbaseCandles(productId: string, candles: Array<{ start: string
 
 export async function runSnapshotPass(opts: { polyLimit?: number; cbProducts?: string[]; candleWindowMin?: number; polyTags?: string[] } = {}): Promise<SnapshotPassResult> {
   const t0 = Date.now();
+  // High-water mark so we mirror only the snapshots THIS pass writes (main loop + short-binaries).
+  const snapStartId = ((db().prepare("SELECT COALESCE(MAX(id), 0) AS m FROM market_snapshots").get() as { m: number } | undefined)?.m) ?? 0;
   const polyLimit = opts.polyLimit ?? defaultPolyLimit();
   const products = opts.cbProducts ?? defaultCbProducts();
   const candleWindowMin = opts.candleWindowMin ?? 60;
@@ -283,9 +294,7 @@ export async function runSnapshotPass(opts: { polyLimit?: number; cbProducts?: s
       errors.push(`coinbase candles[${pid}]: ${(err as Error).message}`);
     }
   }
-  // Best-effort: mirror the ONE_MINUTE candles into the canonical warehouse.
-  const mirror = await mirrorCandlesToWarehouse(candleBatches);
-  if (mirror.error) errors.push(`warehouse-mirror: ${mirror.error}`);
+  // (warehouse mirror runs at the end of the pass, after short-binaries write their snapshots)
 
   // OKX 1-min candles for BNB-USDT and HYPE-USDT — Coinbase doesn't list
   // these, and Binance is geoblocked from US IPs, so OKX is our feed. We
@@ -325,11 +334,21 @@ export async function runSnapshotPass(opts: { polyLimit?: number; cbProducts?: s
     }
   }
 
+  // Best-effort mirror to the canonical warehouse: this pass's ONE_MINUTE candles + new snapshots.
+  const newSnaps = db().prepare(
+    `SELECT condition_id, token_id, question, yes_price, no_price, midpoint, spread,
+            volume_24h, open_interest, liquidity_usd, category, captured_at
+       FROM market_snapshots WHERE id > ? ORDER BY id`,
+  ).all(snapStartId) as SnapRow[];
+  const mirror = await mirrorToWarehouse(candleBatches, newSnaps);
+  if (mirror.error) errors.push(`warehouse-mirror: ${mirror.error}`);
+
   return {
     poly_count: polyCount,
     coinbase_count: cbCount,
     candle_count: candleCount,
-    warehouse_mirrored: mirror.mirrored,
+    warehouse_mirrored: mirror.candles,
+    snapshots_mirrored: mirror.snapshots,
     short_binaries_count: shortBinariesCount,
     short_binaries_by_asset: shortBinariesByAsset,
     latency_ms: Date.now() - t0,

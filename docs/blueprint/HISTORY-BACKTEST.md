@@ -56,9 +56,30 @@ AVAX/SOL/LTC/XRP (IS Sharpe 1.2–1.7) **collapsed to negative out-of-sample** �
 Do **NOT** wire IS-best params into live seeding — they overfit. The deep-history backtest gives
 *priors* (which coin × strategy-TYPE has a genuine edge: BTC trend, ADA-style mean-rev), not
 deploy-ready params. And the **arena's continuous evolve+allocate loop IS out-of-sample by
-construction** — it tests many live and funds only what proves positive on never-seen data. That is
-the correct methodology; this validation just told us which priors to trust. Further rigor: multi-fold
-walk-forward + PBO/Deflated-Sharpe before any capital.
+construction** — it tests many live and funds only what proves positive on never-seen data.
+
+## 🔬 Full overfit battery — `npm run harden-priors`
+The strict gate (handbook §11): a prior is **HARDENED** only if **PBO < 0.3** (Probability of Backtest
+Overfit — combinatorial CV) **AND DSR > 0.95** (Deflated Sharpe — multiple-testing + non-normality
+corrected) **AND median multi-fold-WF OOS Sharpe > 0**. Per-period (daily) Sharpes, 10 bps/turn:
+
+| coin | IS-best | PBO | DSR | medOOS | folds (OOS Sh) | verdict |
+|------|---------|-----|-----|--------|----------------|---------|
+| **BTC** | SMA-50 | **0.00** | **0.94** | +0.059 | 0.1/0.0/0.1/0.1 | borderline (DSR just shy of 0.95) |
+| SOL | Donchian-20 | 0.07 | 0.79 | +0.007 | 0.2/0.0/-0.0/-0.1 | partial |
+| ETH | SMA-20 | 0.00 | 0.68 | +0.021 | 0.1/-0.0/0.0/0.0 | partial |
+| ADA | z-rev | 0.53 | 0.73 | +0.031 | … | partial (PBO too high) |
+| DOT/XRP/LINK/MATIC/DOGE/LTC | — | 0.4–0.81 | — | negative | … | **REJECT** |
+
+**HARDENED: 0/12 under the strict triple-gate.** BTC is the single strongest (PBO 0.00 = its IS-best is
+*never* below median OOS; DSR 0.94; **all 4 walk-forward folds OOS-positive**) but doesn't quite clear
+DSR > 0.95. The honest read: crypto daily-momentum is a *real but modest* edge — strongest on BTC,
+nowhere near the slam-dunk the in-sample numbers implied. Don't bet the account on it.
+
+**Implication for the arena:** keep `cb_breakout`/`cb_momentum` genomes (BTC-trend prior is the most
+defensible), but rely on the **live evolve+allocate loop as the final OOS judge** — it's already doing
+exactly the right thing (funding the survivors, culling the losers). Finer entries (hourly bars) +
+position-sizing may lift BTC over the 0.95 bar; that's the next experiment.
 
 ## Pipeline
 ```

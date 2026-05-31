@@ -106,7 +106,8 @@
     "capture:l2": "tsx scripts/capture-l2.ts",
     "ingest:history": "tsx scripts/ingest-history.ts",
     "backtest:history": "tsx scripts/backtest-history.ts",
-    "validate:history": "tsx scripts/validate-history.ts"
+    "validate:history": "tsx scripts/validate-history.ts",
+    "harden:priors": "tsx scripts/harden-priors.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

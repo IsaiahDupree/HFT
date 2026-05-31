@@ -11,7 +11,7 @@
  * Hourly (ONE_HOUR) gives finer entries for the position-sizing experiments.
  */
 import "./_env.ts";
-import { db } from "../src/lib/db/client.ts";
+import { upsertCandles, candleRange, closeTsdb, type CandleRow } from "../src/lib/db/candle-store.ts";
 
 const DEFAULT_COINS = [
   "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "DOGE-USD", "LTC-USD",
@@ -50,35 +50,22 @@ async function fetchWindow(product: string, startIso: string, endIso: string): P
   const now = Math.floor(Date.now() / 1000);
   const start0 = Math.floor(new Date(fromIso).getTime() / 1000);
 
-  const insert = db().prepare(
-    `INSERT OR IGNORE INTO coinbase_candles (product_id, granularity, start_unix, open, high, low, close, volume)
-     VALUES (@p, @g, @t, @o, @h, @l, @c, @v)`,
-  );
-  const insertMany = db().transaction((p: string, rows: Row[]) => {
-    let n = 0;
-    for (const r of rows) {
-      const res = insert.run({ p, g: GRAN_LABEL, t: r[0], l: r[1], h: r[2], o: r[3], c: r[4], v: r[5] });
-      n += res.changes;
-    }
-    return n;
-  });
+  // Coinbase row [time, low, high, open, close, volume] → warehouse CandleRow.
+  const toCandle = (r: Row): CandleRow => ({ start_unix: r[0], open: r[3], high: r[2], low: r[1], close: r[4], volume: r[5] });
 
-  console.log(`ingest-history: ${coins.length} coins, ${GRAN_LABEL}, from ${fromIso.slice(0, 10)} → now\n`);
+  console.log(`ingest-history: ${coins.length} coins, ${GRAN_LABEL}, from ${fromIso.slice(0, 10)} → now (→ TimescaleDB warehouse)\n`);
   for (const product of coins) {
     let inserted = 0;
-    let fetched = 0;
     for (let s = start0; s < now; s += PER_REQ * GRAN_SECONDS) {
       const e = Math.min(now, s + PER_REQ * GRAN_SECONDS);
       const rows = await fetchWindow(product, new Date(s * 1000).toISOString(), new Date(e * 1000).toISOString());
-      fetched += rows.length;
-      if (rows.length) inserted += insertMany(product, rows);
+      if (rows.length) inserted += await upsertCandles(product, GRAN_LABEL, rows.map(toCandle));
       await sleep(140); // be gentle with the public endpoint
     }
-    const range = db().prepare(
-      `SELECT COUNT(*) n, MIN(start_unix) mn, MAX(start_unix) mx FROM coinbase_candles WHERE product_id=? AND granularity=?`,
-    ).get(product, GRAN_LABEL) as { n: number; mn: number | null; mx: number | null };
+    const range = await candleRange(product, GRAN_LABEL);
     const fmt = (u: number | null) => (u ? new Date(u * 1000).toISOString().slice(0, 19).replace("T", " ") : "—");
     console.log(`  ${product.padEnd(10)} +${String(inserted).padStart(6)} new · total ${String(range.n).padStart(6)} ${GRAN_LABEL} candles · ${fmt(range.mn)} → ${fmt(range.mx)}`);
   }
+  await closeTsdb();
   console.log(`\nDone. Backtest with: npm run backtest:history`);
 })();

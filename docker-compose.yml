@@ -15,6 +15,33 @@
 # the image.
 
 services:
+  # Canonical market-data warehouse — single source of truth for the heavy
+  # append-only time-series (coinbase_candles, realtime_ticks, L2 captures,
+  # market_snapshots) as TimescaleDB hypertables. Both the dev checkout and the
+  # live arena loop connect over localhost:5432, ending the SQLite file
+  # divergence (HFT-work/data vs hft-live/data). The small transactional arena
+  # control-plane (paper_agents/capsules/generations) stays on SQLite for now.
+  #   Connect:  TSDB_URL=postgres://hft:${TSDB_PASSWORD:-hft_local_dev}@localhost:5544/hft
+  #   Init:     npm run tsdb:init       Migrate from SQLite: npm run tsdb:migrate
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: hft-timescaledb
+    # 5544 on the host (a local Postgres already owns 5432) → 5432 in the container.
+    ports:
+      - "5544:5432"
+    environment:
+      - POSTGRES_USER=hft
+      - POSTGRES_PASSWORD=${TSDB_PASSWORD:-hft_local_dev}
+      - POSTGRES_DB=hft
+    volumes:
+      - hft-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hft -d hft"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   app:
     build:
       context: .
@@ -95,3 +122,4 @@ services:
 
 volumes:
   polymarket-data:
+  hft-pgdata:

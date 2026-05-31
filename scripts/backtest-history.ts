@@ -7,7 +7,7 @@
  *   npx tsx scripts/backtest-history.ts [--fee-bps 10]
  */
 import "./_env.ts";
-import { db } from "../src/lib/db/client.ts";
+import { getCandles, listProducts, closeTsdb } from "../src/lib/db/candle-store.ts";
 import { runCandleBacktest, type CandleResult, type DailyCandle } from "../src/lib/backtest/candle/engine.ts";
 import { buyAndHold, donchianBreakout, smaTrend, zMeanReversion } from "../src/lib/backtest/candle/strategies.ts";
 
@@ -16,12 +16,7 @@ function arg(name: string, def: number): number {
   return i >= 0 && process.argv[i + 1] ? Number(process.argv[i + 1]) : def;
 }
 
-function loadDaily(product: string): DailyCandle[] {
-  return db().prepare(
-    `SELECT start_unix, open, high, low, close, volume FROM coinbase_candles
-       WHERE product_id = ? AND granularity = 'ONE_DAY' ORDER BY start_unix ASC`,
-  ).all(product) as DailyCandle[];
-}
+const loadDaily = (product: string): Promise<DailyCandle[]> => getCandles(product, "ONE_DAY");
 
 type Variant = { label: string; positions: number[] };
 function best(candles: DailyCandle[], variants: Variant[], feeBps: number): { label: string; res: CandleResult } {
@@ -35,14 +30,14 @@ function best(candles: DailyCandle[], variants: Variant[], feeBps: number): { la
 const cell = (r: CandleResult) => `${r.pnlPct >= 0 ? "+" : ""}${r.pnlPct.toFixed(0)}% Sh${r.sharpe.toFixed(2)} dd${r.maxDdPct.toFixed(0)}% tr${r.trades}`;
 
 const feeBps = arg("--fee-bps", 10);
-const coins = (db().prepare(`SELECT DISTINCT product_id FROM coinbase_candles WHERE granularity='ONE_DAY' ORDER BY product_id`).all() as Array<{ product_id: string }>).map((r) => r.product_id);
+const coins = await listProducts("ONE_DAY");
 
 console.log(`\nbacktest-history — daily strategies vs buy-&-hold, ${feeBps}bps/turn, best-by-Sharpe\n`);
 console.log(`  ${"coin".padEnd(10)} ${"years".padEnd(6)} ${"buy&hold".padEnd(22)} ${"SMA-trend".padEnd(26)} ${"Donchian".padEnd(26)} ${"z-mean-rev"}`);
 
 const tally: Record<string, number> = { "buy&hold": 0, "SMA-trend": 0, Donchian: 0, "z-mean-rev": 0 };
 for (const coin of coins) {
-  const c = loadDaily(coin);
+  const c = await loadDaily(coin);
   if (c.length < 250) continue;
   const years = (c[c.length - 1].start_unix - c[0].start_unix) / (365.25 * 86400);
   const bh = runCandleBacktest(c, buyAndHold(c), { feeBps });
@@ -61,3 +56,4 @@ for (const coin of coins) {
 }
 console.log(`\n  best-Sharpe winner by coin: ${Object.entries(tally).filter(([, n]) => n > 0).map(([k, n]) => `${k}:${n}`).join("  ")}`);
 console.log(`  (Sharpe = annualized, after ${feeBps}bps/turn fees. Long-flat strategies; no shorting.)\n`);
+await closeTsdb();

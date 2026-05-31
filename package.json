@@ -107,7 +107,9 @@
     "ingest:history": "tsx scripts/ingest-history.ts",
     "backtest:history": "tsx scripts/backtest-history.ts",
     "validate:history": "tsx scripts/validate-history.ts",
-    "harden:priors": "tsx scripts/harden-priors.ts"
+    "harden:priors": "tsx scripts/harden-priors.ts",
+    "tsdb:init": "tsx scripts/tsdb-init.ts",
+    "tsdb:migrate": "tsx scripts/tsdb-migrate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
@@ -115,11 +117,13 @@
     "@polymarket/clob-client": "^4.21.0",
     "@polymarket/clob-client-v2": "^1.0.6",
     "@polymarket/real-time-data-client": "^1.4.0",
+    "@types/pg": "^8.20.0",
     "@types/ws": "^8.18.1",
     "better-sqlite3": "^11.5.0",
     "glpk.js": "^4.0.2",
     "jose": "^5.10.0",
     "next": "^15.5.14",
+    "pg": "^8.21.0",
     "polymarket-agents": "file:",
     "qrcode": "^1.5.4",
     "react": "19.0.0",

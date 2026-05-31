@@ -7,7 +7,7 @@
  *   npx tsx scripts/validate-history.ts [--is-frac 0.7] [--fee-bps 10]
  */
 import "./_env.ts";
-import { db } from "../src/lib/db/client.ts";
+import { getCandles, listProducts, closeTsdb } from "../src/lib/db/candle-store.ts";
 import { runCandleBacktest, type DailyCandle } from "../src/lib/backtest/candle/engine.ts";
 import { buyAndHold, donchianBreakout, smaTrend, zMeanReversion } from "../src/lib/backtest/candle/strategies.ts";
 import { walkForward, type Variant } from "../src/lib/backtest/candle/walkforward.ts";
@@ -16,23 +16,18 @@ function arg(name: string, def: number): number {
   const i = process.argv.indexOf(name);
   return i >= 0 && process.argv[i + 1] ? Number(process.argv[i + 1]) : def;
 }
-function loadDaily(product: string): DailyCandle[] {
-  return db().prepare(
-    `SELECT start_unix, open, high, low, close, volume FROM coinbase_candles
-       WHERE product_id = ? AND granularity = 'ONE_DAY' ORDER BY start_unix ASC`,
-  ).all(product) as DailyCandle[];
-}
+const loadDaily = (product: string): Promise<DailyCandle[]> => getCandles(product, "ONE_DAY");
 
 const isFrac = arg("--is-frac", 0.7);
 const feeBps = arg("--fee-bps", 10);
-const coins = (db().prepare(`SELECT DISTINCT product_id FROM coinbase_candles WHERE granularity='ONE_DAY' ORDER BY product_id`).all() as Array<{ product_id: string }>).map((r) => r.product_id);
+const coins = await listProducts("ONE_DAY");
 
 console.log(`\nvalidate-history — walk-forward (IS ${Math.round(isFrac * 100)}% → OOS ${Math.round((1 - isFrac) * 100)}%), ${feeBps}bps/turn\n`);
 console.log(`  ${"coin".padEnd(10)} ${"best (IS-picked)".padEnd(14)} ${"IS Sh".padEnd(7)} ${"OOS Sh".padEnd(7)} ${"OOS pnl".padEnd(9)} ${"OOS b&h".padEnd(9)} verdict`);
 
 let held = 0, total = 0, beatBH = 0;
 for (const coin of coins) {
-  const c = loadDaily(coin);
+  const c = await loadDaily(coin);
   if (c.length < 600) continue; // need enough for a 70/30 split with lookback
   const split = Math.floor(c.length * isFrac);
   const families: Array<{ name: string; variants: Variant[] }> = [
@@ -62,3 +57,4 @@ for (const coin of coins) {
 }
 console.log(`\n  VERDICT: OOS Sharpe stayed positive on ${held}/${total} coins; beat buy&hold OOS on ${beatBH}/${total}.`);
 console.log(`  (IS-picked params, scored on untouched OOS. Held = the trend edge is real, not grid-overfit.)\n`);
+await closeTsdb();

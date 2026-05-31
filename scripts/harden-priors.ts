@@ -17,7 +17,7 @@
  *   overfit this gate exists to catch.
  */
 import "./_env.ts";
-import { db } from "../src/lib/db/client.ts";
+import { getCandles, listProducts, closeTsdb } from "../src/lib/db/candle-store.ts";
 import { type DailyCandle } from "../src/lib/backtest/candle/engine.ts";
 import { donchianBreakout, smaTrend, zMeanReversion } from "../src/lib/backtest/candle/strategies.ts";
 import { applySizing, turnover } from "../src/lib/backtest/candle/sizing.ts";
@@ -41,12 +41,7 @@ const periodsPerYear = 365 * barsPerDay;            // daily=365, hourly=8760
 const sizeWindow = Math.round(7 * barsPerDay);      // 1-week vol window: 7 daily / 168 hourly
 const sized = flag("--sized");
 
-function loadCandles(product: string): DailyCandle[] {
-  return db().prepare(
-    `SELECT start_unix, open, high, low, close, volume FROM coinbase_candles
-       WHERE product_id = ? AND granularity = ? ORDER BY start_unix ASC`,
-  ).all(product, GRAN) as DailyCandle[];
-}
+const loadCandles = (product: string): Promise<DailyCandle[]> => getCandles(product, GRAN);
 
 type V = { label: string; positions: number[]; raw?: string };
 
@@ -73,7 +68,7 @@ const folds = arg("--folds", 4);
 const coinArg = process.argv.indexOf("--coins");
 const coins = coinArg >= 0 && process.argv[coinArg + 1]
   ? process.argv[coinArg + 1].split(",").map((s) => s.trim())
-  : (db().prepare(`SELECT DISTINCT product_id FROM coinbase_candles WHERE granularity=? ORDER BY product_id`).all(GRAN) as Array<{ product_id: string }>).map((r) => r.product_id);
+  : await listProducts(GRAN);
 const minBars = Math.round(600 * (barsPerDay > 1 ? barsPerDay / 4 : 1)); // need enough bars to be meaningful
 
 console.log(`\nharden-priors — ${GRAN}${sized ? " +inverse-vol sizing" : ""} · PBO (C(${nBlocks},${nBlocks / 2})) + Deflated Sharpe + ${folds}-fold WF, ${feeBps}bps/turn\n`);
@@ -81,7 +76,7 @@ console.log(`  ${"coin".padEnd(10)} ${"best".padEnd(16)} ${"PBO".padEnd(6)} ${"D
 
 let hardened = 0, total = 0;
 for (const coin of coins) {
-  const c = loadCandles(coin);
+  const c = await loadCandles(coin);
   if (c.length < minBars) continue;
   total++;
   const variants = allVariants(c);
@@ -111,3 +106,4 @@ for (const coin of coins) {
 console.log(`\n  HARDENED (PBO<0.3 & DSR>0.95 & medOOS>0 & turn×≤1.25): ${hardened}/${total} coins.`);
 console.log(`  ${variants_note(sized)}  trials/coin=${sized ? "raw+sized (honest pool)" : "raw"}.\n`);
 function variants_note(s: boolean) { return s ? "best may be a +vt (sized) variant; DSR deflated across raw+sized trials." : "PBO=P(IS-best below median OOS); DSR=P(true Sharpe>0 after deflation)."; }
+await closeTsdb();

@@ -3,7 +3,7 @@
  * intake). Pure — no DB / network / execution.
  */
 import { describe, expect, it } from "vitest";
-import { planFromSignal, regimeOf, type GoldenSignal } from "@/lib/signal/intake";
+import { planFromSignal, regimeOf, dedupKey, type GoldenSignal } from "@/lib/signal/intake";
 
 function sig(over: Partial<GoldenSignal> = {}): GoldenSignal {
   return {
@@ -76,5 +76,21 @@ describe("single-regime allowlist", () => {
 
   it("regimeOf normalizes ASSET:rec", () => {
     expect(regimeOf(sig({ asset: "sol", recurrence: "5M" }))).toBe("SOL:5m");
+  });
+});
+
+describe("dedupKey (one order per window)", () => {
+  it("is the regime + window_end_ts", () => {
+    expect(dedupKey(sig({ asset: "ETH", recurrence: "5m", window_end_ts: 1780242300 }))).toBe("ETH:5m@1780242300");
+  });
+  it("same window → same key (would dedup), different window → different key", () => {
+    const a = dedupKey(sig({ window_end_ts: 1000 }));
+    const b = dedupKey(sig({ window_end_ts: 1000 }));
+    const c = dedupKey(sig({ window_end_ts: 1300 }));
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+  });
+  it("null when no window_end_ts (non-dedupable)", () => {
+    expect(dedupKey(sig({ window_end_ts: undefined }))).toBeNull();
   });
 });

@@ -37,6 +37,13 @@ export function regimeOf(sig: GoldenSignal): string {
   return `${String(sig.asset ?? "").toUpperCase()}:${String(sig.recurrence ?? "").toLowerCase()}`;
 }
 
+/** Per-window identity for one-order-per-window dedup. A window with no
+ *  window_end_ts can't be deduped → returns null (caller treats as non-dedupable). */
+export function dedupKey(sig: GoldenSignal): string | null {
+  if (sig.window_end_ts == null) return null;
+  return `${regimeOf(sig)}@${sig.window_end_ts}`;
+}
+
 /** Validate + map a golden signal to a submitSingleSideMarket order, applying the
  *  per-trade USD cap and an optional single-regime allowlist. Rejects (never throws)
  *  on any failed gate. The 2dollar-bot emits the CHOSEN side's token_id, so execution

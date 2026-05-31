@@ -12,7 +12,7 @@
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { planFromSignal } from "@/lib/signal/intake";
+import { planFromSignal, regimeOf } from "@/lib/signal/intake";
 import { submitSingleSideMarket } from "@/lib/polymarket/execute";
 import { db } from "@/lib/db/client";
 
@@ -42,12 +42,13 @@ function journal(sig: z.infer<typeof sigSchema>, accepted: boolean, reason: stri
   try {
     db().prepare(
       `INSERT INTO signal_intake
-        (received_at, source, asset, recurrence, side, size_usd, entry_price, est_win_prob, readiness_ok, accepted, reason, routed, verdict_json)
-       VALUES (@received_at,@source,@asset,@recurrence,@side,@size_usd,@entry_price,@est_win_prob,@readiness_ok,@accepted,@reason,@routed,@verdict_json)`,
+        (received_at, source, asset, recurrence, side, size_usd, entry_price, window_end_ts, est_win_prob, readiness_ok, accepted, reason, routed, verdict_json)
+       VALUES (@received_at,@source,@asset,@recurrence,@side,@size_usd,@entry_price,@window_end_ts,@est_win_prob,@readiness_ok,@accepted,@reason,@routed,@verdict_json)`,
     ).run({
       received_at: Math.floor(Date.now() / 1000),
       source: sig.source ?? null, asset: sig.asset ?? null, recurrence: sig.recurrence ?? null,
       side: sig.side ?? null, size_usd: sig.size_usd ?? null, entry_price: sig.entry_price ?? null,
+      window_end_ts: sig.window_end_ts ?? null,
       est_win_prob: sig.est_win_prob ?? null, readiness_ok: sig.readiness_ok ? 1 : 0,
       accepted: accepted ? 1 : 0, reason, routed: routed ? 1 : 0,
       verdict_json: verdict ? JSON.stringify(verdict) : null,
@@ -80,6 +81,24 @@ export async function POST(req: Request) {
   if (process.env.SIGNAL_INTAKE_ENABLED !== "1") {
     journal(sig, true, "SIGNAL_INTAKE_ENABLED!=1 — journaled, not routed", false, plan.order);
     return NextResponse.json({ accepted: true, routed: false, mode: "shadow", order: plan.order });
+  }
+
+  // ONE ORDER PER WINDOW: the emitter posts every loop cycle and a window stays
+  // qualifying for tens of seconds — without this, a single window fires multiple
+  // orders. Reject if we've already ROUTED this (asset,recurrence,window_end_ts).
+  if (sig.window_end_ts != null) {
+    try {
+      const dup = db().prepare(
+        `SELECT 1 FROM signal_intake WHERE asset=? AND recurrence=? AND window_end_ts=? AND routed=1 LIMIT 1`,
+      ).get(sig.asset ?? null, sig.recurrence ?? null, sig.window_end_ts);
+      if (dup) {
+        const reason = `window ${regimeOf(sig)}@${sig.window_end_ts} already routed — dedup`;
+        journal(sig, true, reason, false, null);
+        return NextResponse.json({ accepted: true, routed: false, mode: "dedup", reason });
+      }
+    } catch {
+      /* if the dedup query fails, fall through (the per-trade + daily caps still apply) */
+    }
   }
 
   const verdict = await submitSingleSideMarket(plan.order!);

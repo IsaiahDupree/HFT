@@ -33,6 +33,7 @@
     "worker:snapshot": "tsx scripts/snapshot-worker.ts",
     "worker:oracle": "tsx scripts/oracle-snapshot.ts",
     "report:oracle-lift": "tsx scripts/oracle-lift.ts",
+    "report:signal-reconcile": "tsx scripts/signal-reconcile.ts",
     "arena:init": "tsx scripts/arena-init.ts",
     "arena:tick": "tsx scripts/arena-tick.ts",
     "arena:evolve": "tsx scripts/arena-evolve.ts",

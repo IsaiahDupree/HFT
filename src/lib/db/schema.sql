@@ -814,6 +814,7 @@ CREATE TABLE IF NOT EXISTS signal_intake (
   size_usd      REAL,
   entry_price   REAL,
   est_win_prob  REAL,
+  window_end_ts INTEGER,
   readiness_ok  INTEGER,
   accepted      INTEGER,
   reason        TEXT,

@@ -67,9 +67,11 @@ export async function flushTicksToWarehouse(): Promise<{ mirrored: number; error
     const mirrored = await insertTicks(batch);
     return { mirrored };
   } catch (err) {
-    // re-queue (bounded) so a transient warehouse outage doesn't lose ticks.
-    TICK_BUFFER.unshift(...batch.slice(-TICK_BUFFER_MAX));
-    if (TICK_BUFFER.length > TICK_BUFFER_MAX) TICK_BUFFER.length = TICK_BUFFER_MAX;
+    // Re-queue the failed batch at the front; if any new ticks arrived during the
+    // flush and we're over cap, drop the OLDEST (consistent with persistRealtimeTick's
+    // shift policy) so a transient warehouse outage keeps the most recent ticks.
+    TICK_BUFFER.unshift(...batch);
+    if (TICK_BUFFER.length > TICK_BUFFER_MAX) TICK_BUFFER.splice(0, TICK_BUFFER.length - TICK_BUFFER_MAX);
     return { mirrored: 0, error: (err as Error).message };
   }
 }

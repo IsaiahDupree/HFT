@@ -116,7 +116,8 @@ export async function insertSnapshots(rows: SnapshotRow[]): Promise<number> {
       });
       const res = await client.query(
         `INSERT INTO market_snapshots (condition_id, token_id, question, yes_price, no_price, midpoint, spread, volume_24h, open_interest, liquidity_usd, category, captured_at)
-         VALUES ${tuples.join(",")}`,
+         VALUES ${tuples.join(",")}
+         ON CONFLICT (token_id, captured_at) DO NOTHING`,
         vals,
       );
       n += res.rowCount ?? 0;

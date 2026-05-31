@@ -55,3 +55,8 @@ SELECT create_hypertable('market_snapshots', 'captured_at',
   chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_snap_token_time
   ON market_snapshots (token_id, captured_at DESC);
+-- Idempotent snapshot mirror: each (token_id, captured_at) is written once, so a
+-- concurrent pass or a retry dedups via ON CONFLICT instead of double-counting.
+-- (captured_at is the partition column, as a hypertable unique index requires.)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_snap_token_captured
+  ON market_snapshots (token_id, captured_at);

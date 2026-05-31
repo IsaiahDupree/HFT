@@ -58,6 +58,20 @@ numbers exactly (BTC daily PBO 0.00 / DSR 0.94; hourly+sized DSR 0.60 / turn× 0
 DAILY + HOURLY (the backtest history) are 100% canonical. The `ONE_MINUTE` gap is the *running* live-capture
 loop still appending to SQLite — a moving target, not data loss.
 
+## Compression + retention (`npm run tsdb:policies`)
+`src/lib/db/tsdb-policies.sql` registers TimescaleDB native compression on all three
+hypertables (compress chunks older than 7 days; ticks after 1 day) plus a 30-day retention
+policy on `realtime_ticks` (sub-minute ephemera — the SQLite side already prunes to 24h).
+**No retention on candles or snapshots** — the deep backtest history since 2015 is kept forever.
+Integer-time hypertables (`start_unix`/`ts_unix`) get a `unix_now()` function via
+`set_integer_now_func` so the policy scheduler can compare relative ages.
+
+The runner also force-compresses already-old chunks so the win is immediate. Measured:
+**candles 72 MB → 13 MB (5.7×); total DB 85 MB → 28 MB.** Compressed chunks remain fully
+queryable — the overfit battery reads them and reproduces BTC PBO 0.00 / DSR 0.94 unchanged.
+Compression preserves uniqueness/ON CONFLICT on recent (uncompressed) chunks because each
+table's unique key is covered by `compress_segmentby` + `compress_orderby`.
+
 ## Follow-ups
 - Repoint the **live arena loop's** candle/tick/snapshot capture (worker-snapshot, capture-l2, realtime)
   to the warehouse so `ONE_MINUTE` + ticks + snapshots are canonical too (kills the last divergence).

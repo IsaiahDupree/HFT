@@ -76,6 +76,16 @@ function runLightMigrations(handle: Database.Database): void {
     handle.exec(`ALTER TABLE paper_generations ADD COLUMN tick_count INTEGER NOT NULL DEFAULT 0;`);
   }
 
+  // 2026-05-31: link an ENTRY paper_trade back to the shadow-gate decision that
+  // produced it (decision_journal.id), so calibration can grade the gates'
+  // approval_score against the realized PnL of the exit (via linked_entry_id).
+  if (!hasColumn("paper_trades", "decision_journal_id")) {
+    handle.exec(`ALTER TABLE paper_trades ADD COLUMN decision_journal_id INTEGER;`);
+  }
+  // Index outside the branch: the column now exists on both fresh (schema.sql) and
+  // migrated DBs, and CREATE INDEX IF NOT EXISTS is idempotent.
+  handle.exec(`CREATE INDEX IF NOT EXISTS idx_paper_trades_decision ON paper_trades(decision_journal_id);`);
+
   // 2026-05-26: drop the FK constraints on order_events.agent_id/capsule_id.
   // The schema's intent is "deliberately NO foreign keys" so a rejection log
   // entry can be written even when the referenced row is missing (e.g. paper

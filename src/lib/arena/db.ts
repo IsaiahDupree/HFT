@@ -138,10 +138,11 @@ export function listAgentsHoldingPosition(marketId: string): PaperAgentRow[] {
 export function insertPaperTrade(t: Omit<PaperTradeRow, "id">): number {
   const stmt = db().prepare(
     `INSERT INTO paper_trades
-       (paper_agent_id, venue, market_id, side, intent, price, size_usd, fee_usd, realized_pnl_usd, linked_entry_id, signal_rationale, tick_at, generation)
-     VALUES (@paper_agent_id, @venue, @market_id, @side, @intent, @price, @size_usd, @fee_usd, @realized_pnl_usd, @linked_entry_id, @signal_rationale, @tick_at, @generation)`,
+       (paper_agent_id, venue, market_id, side, intent, price, size_usd, fee_usd, realized_pnl_usd, linked_entry_id, signal_rationale, tick_at, generation, decision_journal_id)
+     VALUES (@paper_agent_id, @venue, @market_id, @side, @intent, @price, @size_usd, @fee_usd, @realized_pnl_usd, @linked_entry_id, @signal_rationale, @tick_at, @generation, @decision_journal_id)`,
   );
-  const r = stmt.run(t);
+  // normalize the optional FK so better-sqlite3's named binding always finds it.
+  const r = stmt.run({ ...t, decision_journal_id: t.decision_journal_id ?? null });
   return Number(r.lastInsertRowid);
 }
 

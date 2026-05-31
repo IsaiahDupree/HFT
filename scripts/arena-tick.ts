@@ -123,7 +123,11 @@ const EVOLVE_EVERY = Number(process.env.ARENA_EVOLVE_EVERY ?? "50");
         if (proceedToSim) {
           const res = applySignal(agent, signal, ctx, gen.gen_number);
           if (res.trade) {
-            insertPaperTrade(res.trade);
+            const tradeId = insertPaperTrade(res.trade);
+            // Stamp the opened position with its entry trade id so the eventual
+            // EXIT links back (linked_entry_id) — enabling per-round-trip PnL
+            // attribution + calibration of the shadow-gate score.
+            if (res.entryPos) res.entryPos.entry_trade_id = tradeId;
             if (res.trade.intent === "entry") stats.entries += 1;
             if (res.trade.intent === "exit")  stats.exits   += 1;
           }

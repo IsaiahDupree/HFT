@@ -36,12 +36,38 @@ function mapFeeCategory(cat?: string): FeeCategory {
 import type {
   LiveAgent, PaperTradeRow, Position, Signal, Snapshot, SnapshotWindow, TickContext, Venue,
 } from "./types";
+import { runDecisionPipeline } from "@/lib/decision/pipeline";
+import { recordDecision } from "@/lib/decision/journal";
+import type { DecisionContext } from "@/lib/decision/types";
 
 const CB_TAKER_FEE_BPS = 25;
 const POLY_FEE_BPS = 0;
 
 function feeBps(venue: Venue): number {
   return venue === "sim-coinbase" ? CB_TAKER_FEE_BPS : POLY_FEE_BPS;
+}
+
+/** Best-effort SHADOW run of the decision gates on a sim ENTRY, so calibration can
+ *  later grade their approval_score against the realized PnL of the resulting trade
+ *  (entry is stamped with the returned decision_journal.id; the exit carries
+ *  realized_pnl via linked_entry_id). Env-gated (ARENA_SHADOW_GATES=1); the
+ *  governor gate is skipped (portfolio-level, not per-trade edge); fully non-fatal
+ *  — a pipeline failure never blocks the sim. */
+function shadowGateEntry(agentId: number, kind: string, venue: string, marketId: string, side: "BUY" | "SELL", sizeUsd: number, price: number, tickAt: string): number | null {
+  if (process.env.ARENA_SHADOW_GATES !== "1") return null;
+  try {
+    const ctx: DecisionContext = {
+      agentId,
+      capsuleId: `sim-agent-${agentId}`,
+      strategyKind: kind,
+      proposal: { venue, symbol: marketId, side, sizeUsd, price, conditionId: marketId },
+      snapshot: { midPrice: price },
+      ts: tickAt,
+    };
+    return recordDecision(ctx, runDecisionPipeline(ctx, { skipGovernor: true }));
+  } catch {
+    return null;
+  }
 }
 
 function hoursSince(iso: string, now: string): number {
@@ -590,6 +616,7 @@ export function decide(agent: LiveAgent, ctx: TickContext, rng: () => number): S
 export type ApplyResult = {
   trade?: Omit<PaperTradeRow, "id" | "tick_at" | "generation"> & { tick_at: string; generation: number };
   exitOf?: Position;        // when exiting, the closed position is returned for caller to link
+  entryPos?: Position;      // when entering, the opened position — caller sets entry_trade_id after insert
 };
 
 export function applySignal(agent: LiveAgent, signal: Signal, ctx: TickContext, generation: number): ApplyResult {
@@ -615,12 +642,14 @@ export function applySignal(agent: LiveAgent, signal: Signal, ctx: TickContext, 
     };
     agent.positions.push(newPos);
     agent.entries_count += 1;
+    const decisionJournalId = shadowGateEntry(agent.id, agent.genome.kind, signal.venue, signal.market_id, signal.side, signal.size_usd, px, tickAt);
     return {
+      entryPos: newPos,   // caller sets newPos.entry_trade_id once the trade is inserted
       trade: {
         paper_agent_id: agent.id, venue: signal.venue, market_id: signal.market_id,
         side: signal.side, intent: "entry", price: px, size_usd: signal.size_usd, fee_usd: fee,
         realized_pnl_usd: null, linked_entry_id: null, signal_rationale: signal.rationale,
-        tick_at: tickAt, generation,
+        tick_at: tickAt, generation, decision_journal_id: decisionJournalId,
       },
     };
   }

@@ -481,10 +481,13 @@ CREATE TABLE IF NOT EXISTS paper_trades (
   linked_entry_id          INTEGER REFERENCES paper_trades(id),  -- exit → entry pointer
   signal_rationale         TEXT,                                  -- why the agent fired (compact JSON or short text)
   tick_at                  TEXT NOT NULL DEFAULT (datetime('now')),
-  generation               INTEGER NOT NULL
+  generation               INTEGER NOT NULL,
+  decision_journal_id      INTEGER REFERENCES decision_journal(id) -- entry → shadow-gate decision (for calibration)
 );
 CREATE INDEX IF NOT EXISTS idx_paper_trades_agent_tick ON paper_trades(paper_agent_id, tick_at DESC);
 CREATE INDEX IF NOT EXISTS idx_paper_trades_gen ON paper_trades(generation);
+-- idx_paper_trades_decision is created in runLightMigrations (after the column
+-- is guaranteed to exist on both fresh and migrated DBs).
 
 -- One row per generation. Sealed by `arena:evolve`.
 -- Score formula: pnl_pct - 2.0 * max_dd_pct (TradingBot Arena pattern).

@@ -63,4 +63,6 @@ if [ "$RESEARCH_EVERY" -gt 0 ] && [ $(( n % RESEARCH_EVERY )) -eq 0 ]; then
   done
   echo "--- cycle $n: research-refresh (re-target on current market conditions) ---"
   npx tsx scripts/research-refresh.ts --limit 12 2>&1 | grep -E 'regime|seeded|skip'
+  echo "--- cycle $n: calibration (grade gates vs realized PnL) ---"
+  npx tsx scripts/calibration-report.ts --days 30 2>&1 | grep -E 'labeled|calibrated|PROBLEM|accruing'
 fi

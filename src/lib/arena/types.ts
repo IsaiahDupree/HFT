@@ -145,6 +145,9 @@ export type PaperTradeRow = {
   signal_rationale: string | null;
   tick_at: string;
   generation: number;
+  /** ENTRY rows: the shadow-gate decision_journal.id that produced this trade
+   *  (for calibration). null when shadow-gating is off, or on exits. */
+  decision_journal_id?: number | null;
 };
 
 /** Convenience: parsed agent with `genome` already deserialized. */

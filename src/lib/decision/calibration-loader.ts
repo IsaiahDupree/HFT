@@ -29,22 +29,18 @@ export type CalibrationLoaderQuery = {
  * Pulls journal rows with matching trade outcomes. Returns labeled rows
  * that can be fed directly to `buildCalibrationReport()`.
  *
- * Join strategy: LEFT JOIN against paper_trades.client_order_id =
- * decision_journal.order_id. Rows without a matching paper_trade are
- * dropped (no outcome to evaluate).
- *
- * Win definition: realized_pnl_usd > 0 on the EXIT trade (round-trip).
- * Entry trades that haven't exited yet are excluded.
+ * Join: a decision is "labeled" once the ENTRY paper_trade it produced
+ * (paper_trades.decision_journal_id = decision_journal.id, stamped by the sim's
+ * shadow-gate) has at least one EXIT (paper_trades.linked_entry_id → that entry)
+ * carrying realized PnL. `won = net realized PnL > 0`. Decisions whose entry has
+ * not exited yet are excluded (no outcome to grade).
  */
 export function loadLabeledDecisions(q: CalibrationLoaderQuery = {}): LabeledDecision[] {
   const since = q.sinceTs ?? new Date(Date.now() - 30 * 86_400_000).toISOString();
   const limit = Math.min(Math.max(10, q.limit ?? 1000), 10_000);
 
-  // Match decision rows to paper_trades by order_id. For Phase 13 v1 we
-  // restrict to executed decisions (order_id IS NOT NULL). The realized
-  // PnL comes from the EXIT trade (kind = 'exit'); we sum if multiple.
   const params: Record<string, unknown> = { since, limit };
-  const filters: string[] = ["d.ts >= @since", "d.order_id IS NOT NULL"];
+  const filters: string[] = ["d.ts >= @since"];
   if (q.strategyKind) {
     filters.push("d.strategy_kind = @strategy_kind");
     params.strategy_kind = q.strategyKind;
@@ -54,18 +50,19 @@ export function loadLabeledDecisions(q: CalibrationLoaderQuery = {}): LabeledDec
     params.capsule_id = q.capsuleId;
   }
 
-  // paper_trades schema check: client_order_id, realized_pnl_usd, kind
-  // (kind='exit' rows carry the realized pnl for the round trip).
+  // decision → entry trade (decision_journal_id) → exit trade (linked_entry_id,
+  // realized_pnl_usd). INNER JOINs ensure only decisions with a realized exit.
   const rows = db()
     .prepare(
       `SELECT
          d.id, d.approval_score, d.decision, d.strategy_kind, d.capsule_id,
-         COALESCE(SUM(CASE WHEN pt.kind = 'exit' THEN pt.realized_pnl_usd ELSE 0 END), 0) AS realized_pnl
+         COALESCE(SUM(x.realized_pnl_usd), 0) AS realized_pnl
        FROM decision_journal d
-       LEFT JOIN paper_trades pt ON pt.client_order_id = d.order_id
+       JOIN paper_trades e ON e.decision_journal_id = d.id AND e.intent = 'entry'
+       JOIN paper_trades x ON x.linked_entry_id = e.id AND x.intent = 'exit'
+                          AND x.realized_pnl_usd IS NOT NULL
        WHERE ${filters.join(" AND ")}
        GROUP BY d.id
-       HAVING SUM(CASE WHEN pt.kind = 'exit' THEN 1 ELSE 0 END) > 0
        ORDER BY d.ts DESC
        LIMIT @limit`,
     )

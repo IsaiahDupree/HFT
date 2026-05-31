@@ -780,3 +780,23 @@ CREATE INDEX IF NOT EXISTS idx_decision_journal_ts ON decision_journal(ts);
 CREATE INDEX IF NOT EXISTS idx_decision_journal_capsule ON decision_journal(capsule_id, ts);
 CREATE INDEX IF NOT EXISTS idx_decision_journal_decision ON decision_journal(decision, ts);
 CREATE INDEX IF NOT EXISTS idx_decision_journal_strategy_kind ON decision_journal(strategy_kind, ts);
+
+-- Oracle/spot agreement + Chainlink update-age snapshots (PRD-04 #1/#2).
+-- Captured on the snapshot cadence by src/lib/oracle/capture.ts so the
+-- oracle-agreement and Chainlink-staleness strategies become measurable.
+CREATE TABLE IF NOT EXISTS oracle_snapshots (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset                 TEXT NOT NULL,
+  captured_at           INTEGER NOT NULL,             -- unix seconds
+  coinbase              REAL,
+  okx                   REAL,
+  coindesk              REAL,
+  chainlink             REAL,
+  agreement_score       REAL,                          -- 0..1 across the resolvable sources
+  side_agree            INTEGER,                       -- 1 = all sources same side of price_to_beat
+  n_sources             INTEGER,                       -- how many sources resolved
+  chainlink_update_age  REAL,                          -- seconds since the feed last published
+  chainlink_zone        TEXT,                          -- fresh | aging | stale
+  created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_oracle_snapshots_asset_ts ON oracle_snapshots(asset, captured_at);

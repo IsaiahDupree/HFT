@@ -31,6 +31,7 @@
     "dydx:basis": "tsx scripts/dydx-basis.ts",
     "seed:coinbase": "tsx scripts/seed-cross-venue.ts",
     "worker:snapshot": "tsx scripts/snapshot-worker.ts",
+    "worker:oracle": "tsx scripts/oracle-snapshot.ts",
     "arena:init": "tsx scripts/arena-init.ts",
     "arena:tick": "tsx scripts/arena-tick.ts",
     "arena:evolve": "tsx scripts/arena-evolve.ts",

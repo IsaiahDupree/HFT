@@ -32,6 +32,7 @@
     "seed:coinbase": "tsx scripts/seed-cross-venue.ts",
     "worker:snapshot": "tsx scripts/snapshot-worker.ts",
     "worker:oracle": "tsx scripts/oracle-snapshot.ts",
+    "report:oracle-lift": "tsx scripts/oracle-lift.ts",
     "arena:init": "tsx scripts/arena-init.ts",
     "arena:tick": "tsx scripts/arena-tick.ts",
     "arena:evolve": "tsx scripts/arena-evolve.ts",

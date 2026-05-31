@@ -64,7 +64,11 @@ export async function POST(req: Request) {
   const sig = parsed.data;
 
   const maxTradeUsd = Number(process.env.MAX_TRADE_USD ?? "2");
-  const plan = planFromSignal(sig, { maxTradeUsd });
+  // SIGNAL_INTAKE_ALLOW = comma-separated "ASSET:rec" (e.g. "SOL:5m"). When set,
+  // ONLY those regimes may route — everything else is rejected. This is how live
+  // trading is restricted to one coin+window with no trades against the others.
+  const allow = (process.env.SIGNAL_INTAKE_ALLOW ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const plan = planFromSignal(sig, { maxTradeUsd, allow });
 
   if (!plan.accepted) {
     journal(sig, false, plan.reason, false, null);

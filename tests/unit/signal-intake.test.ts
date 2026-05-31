@@ -3,7 +3,7 @@
  * intake). Pure — no DB / network / execution.
  */
 import { describe, expect, it } from "vitest";
-import { planFromSignal, type GoldenSignal } from "@/lib/signal/intake";
+import { planFromSignal, regimeOf, type GoldenSignal } from "@/lib/signal/intake";
 
 function sig(over: Partial<GoldenSignal> = {}): GoldenSignal {
   return {
@@ -54,5 +54,27 @@ describe("planFromSignal", () => {
   it("accepts DOWN / NO sides too", () => {
     expect(planFromSignal(sig({ side: "DOWN" }), OPTS).accepted).toBe(true);
     expect(planFromSignal(sig({ side: "no" }), OPTS).accepted).toBe(true);
+  });
+});
+
+describe("single-regime allowlist", () => {
+  const ALLOW = { maxTradeUsd: 2, allow: ["SOL:5m"] };
+
+  it("accepts the allowed regime", () => {
+    expect(planFromSignal(sig({ asset: "SOL", recurrence: "5m" }), ALLOW).accepted).toBe(true);
+  });
+
+  it("REJECTS every other coin+window (no trades against the rest)", () => {
+    expect(planFromSignal(sig({ asset: "ETH", recurrence: "5m" }), ALLOW).accepted).toBe(false);
+    expect(planFromSignal(sig({ asset: "SOL", recurrence: "15m" }), ALLOW).accepted).toBe(false);
+    expect(planFromSignal(sig({ asset: "BTC", recurrence: "15m" }), ALLOW).reason).toContain("not in allowlist");
+  });
+
+  it("empty allowlist allows all (allowlist disabled)", () => {
+    expect(planFromSignal(sig({ asset: "BTC" }), { maxTradeUsd: 2, allow: [] }).accepted).toBe(true);
+  });
+
+  it("regimeOf normalizes ASSET:rec", () => {
+    expect(regimeOf(sig({ asset: "sol", recurrence: "5M" }))).toBe("SOL:5m");
   });
 });

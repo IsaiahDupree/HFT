@@ -32,12 +32,29 @@ export type IntakeDecision = {
 
 const SIDES = new Set(["UP", "DOWN", "YES", "NO"]);
 
+/** Normalize a signal's regime key as "ASSET:recurrence" (e.g. "SOL:5m"). */
+export function regimeOf(sig: GoldenSignal): string {
+  return `${String(sig.asset ?? "").toUpperCase()}:${String(sig.recurrence ?? "").toLowerCase()}`;
+}
+
 /** Validate + map a golden signal to a submitSingleSideMarket order, applying the
- *  per-trade USD cap. Rejects (never throws) on any failed gate. The 2dollar-bot
- *  emits the CHOSEN side's token_id, so execution is always a BUY of that token. */
-export function planFromSignal(sig: GoldenSignal, opts: { maxTradeUsd: number }): IntakeDecision {
+ *  per-trade USD cap and an optional single-regime allowlist. Rejects (never throws)
+ *  on any failed gate. The 2dollar-bot emits the CHOSEN side's token_id, so execution
+ *  is always a BUY of that token.
+ *
+ *  `allow`: if non-empty, ONLY signals whose ASSET:recurrence is in it may route —
+ *  this is how we restrict live trading to ONE coin+window and reject all others. */
+export function planFromSignal(sig: GoldenSignal,
+                               opts: { maxTradeUsd: number; allow?: string[] }): IntakeDecision {
   if (!sig || typeof sig !== "object") return { accepted: false, reason: "no signal body" };
   if (!sig.readiness_ok) return { accepted: false, reason: "2dollar-bot readiness gate not met (readiness_ok=false)" };
+  const allow = (opts.allow ?? []).map((s) => s.trim().toUpperCase()).filter(Boolean);
+  if (allow.length > 0) {
+    const regime = regimeOf(sig).toUpperCase();
+    if (!allow.includes(regime)) {
+      return { accepted: false, reason: `regime ${regime} not in allowlist [${allow.join(", ")}]` };
+    }
+  }
   const side = String(sig.side ?? "").toUpperCase();
   if (!SIDES.has(side)) return { accepted: false, reason: `bad side '${sig.side}'` };
   if (!sig.token_id) return { accepted: false, reason: "no token_id (can't resolve the side's CLOB token)" };

@@ -568,7 +568,7 @@ def document_blocks():
 
     # 15 — roadmap
     H("15. Roadmap")
-    for t in ["Repoint the live capture loop (ONE_MINUTE candles, ticks, snapshots) into the warehouse so it is canonical end-to-end.",
+    for t in ["DONE — the live loop now dual-writes ONE_MINUTE candles into the warehouse (best-effort, both checkouts). Next: mirror ticks + snapshots the same way.",
               "Accumulate a real arena-funded PnL sample, then let calibration grade the gates against realized outcomes.",
               "Let the arena run more generations — track whether the comeback genome (poly_short_binary g1) holds up or reverts.",
               "Add Timescale compression + retention on the minute/tick hypertables as they grow.",

@@ -69,11 +69,40 @@ export type SnapshotPassResult = {
   poly_count: number;
   coinbase_count: number;
   candle_count: number;
+  warehouse_mirrored: number;   // ONE_MINUTE candles best-effort upserted into the TimescaleDB warehouse
   short_binaries_count: number;
   short_binaries_by_asset: Record<string, number>;
   latency_ms: number;
   errors: string[];
 };
+
+type RawCandle = { start: string; low: string; high: string; open: string; close: string; volume: string };
+
+/** Best-effort mirror of ONE_MINUTE candles into the TimescaleDB warehouse so it
+ *  stays the canonical store, while SQLite remains the loop's resilient local
+ *  cache. Dynamic import + try/catch so a missing `pg` dep or a down warehouse
+ *  (Docker off) degrades gracefully and never breaks the live snapshot pass.
+ *  Toggle with ARENA_WAREHOUSE_MIRROR=0. Opens and closes its own pool so the
+ *  short-lived worker process can still exit cleanly. */
+async function mirrorCandlesToWarehouse(batches: Array<{ product: string; rows: RawCandle[] }>): Promise<{ mirrored: number; error?: string }> {
+  if ((process.env.ARENA_WAREHOUSE_MIRROR ?? "1") !== "1" || batches.length === 0) return { mirrored: 0 };
+  let store: typeof import("../db/candle-store") | undefined;
+  try {
+    store = await import("../db/candle-store");
+    let mirrored = 0;
+    for (const b of batches) {
+      const rows = b.rows
+        .map((c) => ({ start_unix: Number(c.start), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close), volume: Number(c.volume ?? 0) }))
+        .filter((r) => Number.isFinite(r.start_unix) && Number.isFinite(r.open));
+      mirrored += await store.upsertCandles(b.product, "ONE_MINUTE", rows);
+    }
+    return { mirrored };
+  } catch (err) {
+    return { mirrored: 0, error: (err as Error).message };
+  } finally {
+    try { await store?.closeTsdb(); } catch { /* ignore */ }
+  }
+}
 
 /** Insert OKX 1-min candles into coindesk_candles with market='okx'. The
  *  table's UNIQUE(market, instrument, granularity, start_unix) constraint
@@ -239,6 +268,7 @@ export async function runSnapshotPass(opts: { polyLimit?: number; cbProducts?: s
   // up to ~300 candles per call. We ask for last `candleWindowMin` minutes
   // per configured product. ON CONFLICT IGNORE makes this fully idempotent.
   const nowSec = Math.floor(Date.now() / 1000);
+  const candleBatches: Array<{ product: string; rows: RawCandle[] }> = [];
   for (const pid of products) {
     try {
       const candles = await cb.publicGetProductCandles(pid, {
@@ -246,12 +276,16 @@ export async function runSnapshotPass(opts: { polyLimit?: number; cbProducts?: s
         end: String(nowSec),
         granularity: "ONE_MINUTE",
       });
-      const n = recordCoinbaseCandles(pid, (candles as { candles: any[] })?.candles ?? []);
-      candleCount += n;
+      const rows = ((candles as { candles: RawCandle[] })?.candles ?? []);
+      candleCount += recordCoinbaseCandles(pid, rows);
+      if (rows.length) candleBatches.push({ product: pid, rows });
     } catch (err) {
       errors.push(`coinbase candles[${pid}]: ${(err as Error).message}`);
     }
   }
+  // Best-effort: mirror the ONE_MINUTE candles into the canonical warehouse.
+  const mirror = await mirrorCandlesToWarehouse(candleBatches);
+  if (mirror.error) errors.push(`warehouse-mirror: ${mirror.error}`);
 
   // OKX 1-min candles for BNB-USDT and HYPE-USDT — Coinbase doesn't list
   // these, and Binance is geoblocked from US IPs, so OKX is our feed. We
@@ -295,6 +329,7 @@ export async function runSnapshotPass(opts: { polyLimit?: number; cbProducts?: s
     poly_count: polyCount,
     coinbase_count: cbCount,
     candle_count: candleCount,
+    warehouse_mirrored: mirror.mirrored,
     short_binaries_count: shortBinariesCount,
     short_binaries_by_asset: shortBinariesByAsset,
     latency_ms: Date.now() - t0,

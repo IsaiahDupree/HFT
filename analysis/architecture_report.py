@@ -351,37 +351,23 @@ def fig_reality_gap():
 # --------------------------------------------------------------------------- #
 # WORD DOCUMENT
 # --------------------------------------------------------------------------- #
-def build_doc():
-    from docx import Document
-    from docx.shared import Inches, Pt, RGBColor
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-
-    doc = Document()
-    normal = doc.styles["Normal"]; normal.font.name = "Calibri"; normal.font.size = Pt(11)
-
-    title = doc.add_heading("The HFT Control-Plane — Architecture, Timing & Strategic-Space Playbook", level=0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    sub = doc.add_paragraph("A full breakdown of a self-evolving trading system: how data becomes signals, "
-                            "how thousands of candidate strategies are bred and culled, how the survivors earn "
-                            "real capital, where the edge actually lives, and — honestly — whether it is proven yet.")
-    sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    meta = doc.add_paragraph(f"Generated {GEN_DATE} · github.com/IsaiahDupree/HFT · data snapshot from the live arena + TimescaleDB warehouse")
-    meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    for r in meta.runs: r.italic = True; r.font.size = Pt(9)
-
-    def H(t, l=1): doc.add_heading(t, level=l)
-    def P(t): return doc.add_paragraph(t)
-    def B(t):
-        return doc.add_paragraph(t, style="List Bullet")
-    def BB(bold, rest):
-        p = doc.add_paragraph(style="List Bullet"); r = p.add_run(bold); r.bold = True; p.add_run(rest); return p
+def document_blocks():
+    """The document as an ordered list of (type, ...) blocks — rendered to BOTH docx
+    and PDF from one source so the prose can never drift between formats."""
+    blocks = []
+    def H(t, l=1): blocks.append(("h", l, t))
+    def P(t): blocks.append(("p", t))
+    def B(t): blocks.append(("bullet", t))
+    def BB(bold, rest): blocks.append(("bb", bold, rest))
     def fig(name, cap):
-        path = os.path.join(OUT, name)
-        if os.path.exists(path):
-            doc.add_picture(path, width=Inches(6.4))
-            doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-            c = doc.add_paragraph(cap); c.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            for r in c.runs: r.italic = True; r.font.size = Pt(9)
+        if os.path.exists(os.path.join(OUT, name)): blocks.append(("fig", name, cap))
+
+    blocks.append(("title",
+        "The HFT Control-Plane — Architecture, Timing & Strategic-Space Playbook",
+        "A full breakdown of a self-evolving trading system: how data becomes signals, how thousands of "
+        "candidate strategies are bred and culled, how the survivors earn real capital, where the edge "
+        "actually lives, and — honestly — whether it is proven yet.",
+        f"Generated {GEN_DATE} · github.com/IsaiahDupree/HFT · data snapshot from the live arena + TimescaleDB warehouse"))
 
     # 1
     H("1. Executive summary")
@@ -589,8 +575,82 @@ def build_doc():
               "Only after a defensible edge survives BOTH the offline gauntlet AND the live arena: widen the live cap beyond $30, scaling with proof."]:
         B(t)
 
+    return blocks
+
+
+def build_docx(blocks):
+    from docx import Document
+    from docx.shared import Inches, Pt
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    doc = Document()
+    normal = doc.styles["Normal"]; normal.font.name = "Calibri"; normal.font.size = Pt(11)
+    for blk in blocks:
+        kind = blk[0]
+        if kind == "title":
+            _, t, sub, meta = blk
+            h = doc.add_heading(t, level=0); h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            s = doc.add_paragraph(sub); s.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            m = doc.add_paragraph(meta); m.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for r in m.runs: r.italic = True; r.font.size = Pt(9)
+        elif kind == "h":
+            doc.add_heading(blk[2], level=blk[1])
+        elif kind == "p":
+            doc.add_paragraph(blk[1])
+        elif kind == "bullet":
+            doc.add_paragraph(blk[1], style="List Bullet")
+        elif kind == "bb":
+            p = doc.add_paragraph(style="List Bullet"); r = p.add_run(blk[1]); r.bold = True; p.add_run(blk[2])
+        elif kind == "fig":
+            doc.add_picture(os.path.join(OUT, blk[1]), width=Inches(6.4))
+            doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            c = doc.add_paragraph(blk[2]); c.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for r in c.runs: r.italic = True; r.font.size = Pt(9)
     out = os.path.join(OUT, "HFT_Architecture_Timing_Playbook.docx")
     doc.save(out)
+    return out
+
+
+def build_pdf(blocks):
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.colors import HexColor
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, ListFlowable, ListItem
+    from reportlab.lib.utils import ImageReader
+
+    ss = getSampleStyleSheet()
+    accent = HexColor(ACCENT)
+    h0 = ParagraphStyle("h0", parent=ss["Title"], textColor=accent, fontSize=18, leading=22, alignment=TA_CENTER)
+    sub = ParagraphStyle("sub", parent=ss["Normal"], fontSize=11, leading=15, alignment=TA_CENTER, textColor=HexColor("#333333"))
+    metaS = ParagraphStyle("meta", parent=ss["Normal"], fontSize=8, alignment=TA_CENTER, textColor=HexColor("#777777"))
+    hS = {1: ParagraphStyle("h1", parent=ss["Heading1"], textColor=accent, fontSize=14, leading=18, spaceBefore=12, spaceAfter=6)}
+    body = ParagraphStyle("body", parent=ss["Normal"], fontSize=10.5, leading=15, spaceAfter=6)
+    cap = ParagraphStyle("cap", parent=ss["Normal"], fontSize=8.5, leading=11, alignment=TA_CENTER, textColor=HexColor("#555555"), spaceAfter=10, italic=True)
+    story = []
+    page_w = letter[0] - 1.5 * inch
+    for blk in blocks:
+        kind = blk[0]
+        if kind == "title":
+            _, t, s, m = blk
+            story += [Spacer(1, 0.4 * inch), Paragraph(t, h0), Spacer(1, 0.12 * inch),
+                      Paragraph(s, sub), Spacer(1, 0.08 * inch), Paragraph(m, metaS), Spacer(1, 0.2 * inch)]
+        elif kind == "h":
+            story.append(Paragraph(blk[2], hS.get(blk[1], hS[1])))
+        elif kind == "p":
+            story.append(Paragraph(blk[1], body))
+        elif kind == "bullet":
+            story.append(ListFlowable([ListItem(Paragraph(blk[1], body))], bulletType="bullet", start="•"))
+        elif kind == "bb":
+            story.append(ListFlowable([ListItem(Paragraph(f"<b>{blk[1]}</b>{blk[2]}", body))], bulletType="bullet", start="•"))
+        elif kind == "fig":
+            path = os.path.join(OUT, blk[1])
+            iw, ih = ImageReader(path).getSize()
+            w = page_w; h = w * ih / iw
+            story += [Image(path, width=w, height=h), Paragraph(blk[2], cap)]
+    out = os.path.join(OUT, "HFT_Architecture_Timing_Playbook.pdf")
+    SimpleDocTemplate(out, pagesize=letter, leftMargin=0.75 * inch, rightMargin=0.75 * inch,
+                      topMargin=0.7 * inch, bottomMargin=0.7 * inch).build(story)
     return out
 
 
@@ -604,5 +664,6 @@ def render_all():
 
 if __name__ == "__main__":
     render_all()
-    out = build_doc()
-    print("DOC:", out)
+    blocks = document_blocks()
+    print("DOCX:", build_docx(blocks))
+    print("PDF: ", build_pdf(blocks))

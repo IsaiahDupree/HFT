@@ -53,15 +53,31 @@ function feeBps(venue: Venue): number {
  *  realized_pnl via linked_entry_id). Env-gated (ARENA_SHADOW_GATES=1); the
  *  governor gate is skipped (portfolio-level, not per-trade edge); fully non-fatal
  *  — a pipeline failure never blocks the sim. */
-function shadowGateEntry(agentId: number, kind: string, venue: string, marketId: string, side: "BUY" | "SELL", sizeUsd: number, price: number, tickAt: string): number | null {
+function shadowGateEntry(agentId: number, kind: string, venue: string, marketId: string, side: "BUY" | "SELL", sizeUsd: number, price: number, tickAt: string, win?: SnapshotWindow): number | null {
   if (process.env.ARENA_SHADOW_GATES !== "1") return null;
   try {
+    // Calibration v2: pass the REAL market context the sim already holds so the
+    // regime/data-quality/edge gates score actual conditions, not a {midPrice}
+    // stub. `win.history` (oldest→newest) feeds the regime classifier; bid/ask
+    // feed data-quality + spread sanity. (No L2 book in the arena sim → no
+    // orderBook/slippage; that arrives with the dYdX/L2 path.)
+    const snapshot: DecisionContext["snapshot"] = win
+      ? {
+          midPrice: price,
+          bestBid: win.latest.bid,
+          bestAsk: win.latest.ask,
+          ticks: win.history.slice(-100).map((s) => {
+            const t = Date.parse(s.captured_at);
+            return { ts: Number.isFinite(t) ? Math.floor(t / 1000) : 0, price: s.price };
+          }),
+        }
+      : { midPrice: price };
     const ctx: DecisionContext = {
       agentId,
       capsuleId: `sim-agent-${agentId}`,
       strategyKind: kind,
       proposal: { venue, symbol: marketId, side, sizeUsd, price, conditionId: marketId },
-      snapshot: { midPrice: price },
+      snapshot,
       ts: tickAt,
     };
     return recordDecision(ctx, runDecisionPipeline(ctx, { skipGovernor: true }));
@@ -642,7 +658,7 @@ export function applySignal(agent: LiveAgent, signal: Signal, ctx: TickContext, 
     };
     agent.positions.push(newPos);
     agent.entries_count += 1;
-    const decisionJournalId = shadowGateEntry(agent.id, agent.genome.kind, signal.venue, signal.market_id, signal.side, signal.size_usd, px, tickAt);
+    const decisionJournalId = shadowGateEntry(agent.id, agent.genome.kind, signal.venue, signal.market_id, signal.side, signal.size_usd, px, tickAt, win);
     return {
       entryPos: newPos,   // caller sets newPos.entry_trade_id once the trade is inserted
       trade: {

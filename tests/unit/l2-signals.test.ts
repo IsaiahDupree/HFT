@@ -57,4 +57,22 @@ describe("calibrateOfiAlpha", () => {
     expect(c.r2).toBeLessThanOrEqual(1);
     expect(c.n).toBeGreaterThan(0);
   });
+
+  it("logprice space measures OFI→price on dollar-priced (continuous) books; logit clamps to ~0", () => {
+    // dollar-scale prices (>1) so the logit clamp pins every x to ~log(1/1e-6).
+    // Bid-size growth (positive OFI) precedes an up-tick; ask-size growth precedes a down-tick.
+    const events: MarketEvent[] = [];
+    let px = 100;
+    for (let t = 0; t < 200; t++) {
+      const buyPressure = t % 2 === 0;
+      events.push({ ts: t, kind: "book", bidPx: px - 0.05, bidSz: buyPressure ? 200 : 100, askPx: px + 0.05, askSz: buyPressure ? 100 : 200 });
+      px += buyPressure ? 0.02 : -0.02;
+    }
+    const lp = calibrateOfiAlpha(events, { horizonSec: 1, ofiWindowSec: 1, space: "logprice" });
+    const lo = calibrateOfiAlpha(events, { horizonSec: 1, ofiWindowSec: 1, space: "logit" });
+    expect(lp.n).toBeGreaterThan(0);
+    expect(Math.abs(lp.alphaBeta)).toBeGreaterThan(0); // real signal recovered in price space
+    expect(lp.r2).toBeGreaterThan(0);
+    expect(lo.r2).toBe(0);                              // logit clamp → degenerate on dollar prices
+  });
 });

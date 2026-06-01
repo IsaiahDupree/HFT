@@ -111,7 +111,8 @@
     "tsdb:init": "tsx scripts/tsdb-init.ts",
     "tsdb:migrate": "tsx scripts/tsdb-migrate.ts",
     "tsdb:policies": "tsx scripts/tsdb-policies.ts",
-    "calibration:report": "tsx scripts/calibration-report.ts"
+    "calibration:report": "tsx scripts/calibration-report.ts",
+    "capture:dydx": "tsx scripts/capture-l2-dydx.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

@@ -118,7 +118,8 @@
     "record:dydx": "tsx scripts/record-l2-dydx.ts",
     "backtest:dydx:mm": "tsx scripts/backtest-dydx-mm.ts",
     "xsection:signal": "tsx scripts/xsection-signal.ts",
-    "xsection:paper": "tsx scripts/xsection-paper.ts"
+    "xsection:paper": "tsx scripts/xsection-paper.ts",
+    "meta:allocate": "tsx scripts/meta-allocate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

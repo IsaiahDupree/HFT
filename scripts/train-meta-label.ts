@@ -9,6 +9,7 @@
 import "./_env.ts";
 import { loadLabeledDecisions } from "../src/lib/decision/calibration-loader.ts";
 import { trainMetaLabel, metaLabelProb } from "../src/lib/decision/meta-label.ts";
+import { saveMetaModel, META_MODEL_PATH } from "../src/lib/decision/meta-label-store.ts";
 
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
 const days = Number(arg("--days") ?? 90);
@@ -40,5 +41,10 @@ const buckets = new Map<number, { n: number; wins: number; psum: number }>();
 for (const r of chron) { const p = metaLabelProb(r, m); const b = Math.round(p * 4) / 4; const e = buckets.get(b) ?? { n: 0, wins: 0, psum: 0 }; e.n++; e.wins += r.won ? 1 : 0; e.psum += p; buckets.set(b, e); }
 console.log(`  calibration (predicted P → actual win-rate):`);
 for (const [, e] of [...buckets].sort((a, b) => a[0] - b[0])) console.log(`    ~${(e.psum / e.n).toFixed(2)} → ${(e.wins / e.n * 100).toFixed(0)}% actual (n=${e.n})`);
-console.log(`\n  → calibrated P(win) replaces the hand-coded signal-agreement score + drives the Kelly size_multiplier.`);
+// Persist the FULL-sample model (not the 70% split — that split exists only to
+// report the honest holdout accuracy above). This is what the live path loads.
+const production = trainMetaLabel(chron, { iters: 1200 });
+saveMetaModel(production);
+console.log(`\n  saved full-sample model → ${META_MODEL_PATH} (n=${production.n})`);
+console.log(`  live path: set META_LABEL_SIZING=1 to have it TRIM the size_multiplier (trim-only; never flips/resurrects).`);
 console.log(`  HOLDOUT is the honest read; thin data ⇒ noisy. Sharpens as the loop journals more decisions.\n`);

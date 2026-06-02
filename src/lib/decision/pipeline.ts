@@ -41,6 +41,7 @@ import { governorGate } from "./gates/governor";
 import { signalAgreementGate } from "./gates/signal-agreement";
 import { classifyRegime, regimeFitScore, type Regime } from "./regime";
 import { finalizeDecision } from "./score";
+import { applyMetaLabel, type MetaLabelSizing } from "./meta-label";
 import { Gate, type DecisionContext, type DecisionResult, type GateResult } from "./types";
 
 export type PipelineOptions = {
@@ -58,6 +59,13 @@ export type PipelineOptions = {
    * pipeline call goes through the governor.
    */
   skipGovernor?: boolean;
+  /**
+   * Meta-labeler (López de Prado): a trained P(win) model that TRIMS the
+   * size_multiplier of an approved decision by its learned confidence. Sizes
+   * only — never flips direction, never resurrects a rejected decision. When
+   * omitted (the default) the pipeline behaves exactly as before.
+   */
+  metaLabel?: MetaLabelSizing;
 };
 
 export function runDecisionPipeline(
@@ -108,11 +116,14 @@ export function runDecisionPipeline(
   // 7. Execution
   gateResults.push(executionGate(ctx));
 
-  // Signal-agreement is a future v2 work item (PRD §6 — cross-strategy
-  // ensemble). For now we don't insert it; the DEFAULT_GATE_WEIGHTS map
-  // re-normalizes by present weights so the score isn't dragged down.
+  const result = finalizeDecision(gateResults, undefined, opts.nowIso ?? new Date().toISOString());
 
-  return finalizeDecision(gateResults, undefined, opts.nowIso ?? new Date().toISOString());
+  // 8. Meta-label (optional, López de Prado): a trained P(win) model trims the
+  // size_multiplier by its learned confidence. The signal-agreement gate (step 4,
+  // weight 0.15) supplies its hand-coded cluster-count score; the meta-labeler is
+  // the LEARNED replacement that sizes on top. Off unless a model is injected.
+  if (opts.metaLabel) return applyMetaLabel(result, opts.metaLabel);
+  return result;
 }
 
 /** Build the regime gate output by classifying + comparing to strategy preference. */

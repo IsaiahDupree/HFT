@@ -14,6 +14,7 @@
  * would overfit). No DB/IO.
  */
 import type { LabeledDecision } from "./calibration";
+import type { DecisionResult, GateResult } from "./types";
 
 const sigmoid = (z: number) => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
 
@@ -71,4 +72,63 @@ export function metaLabelProb(d: FeatureRow, model: MetaModel): number {
  *  meta-prob drives the size_multiplier — bigger when the model is confident. */
 export function kellySize(pWin: number, payoffRatio = 1, fraction = 1): number {
   return Math.max(0, Math.min(1, fraction * (pWin - (1 - pWin) / payoffRatio)));
+}
+
+// ─── SERVING: apply the trained meta-labeler to a live decision ────────────
+
+/**
+ * Build the meta-label feature row from a FINALIZED decision, using the EXACT
+ * same extraction `calibration-loader` uses for training (gate→score map; regime
+ * from the regime gate's details.regime; approval_score) — train/serve parity,
+ * so the served features match the trained ones. The synthetic `meta_label` gate
+ * (if a prior pass injected one) is ignored — it is never a feature (no leakage).
+ */
+export function featureRowFromResult(
+  result: { approval_score: number; gate_results: ReadonlyArray<Pick<GateResult, "gate" | "score" | "details">> },
+): FeatureRow {
+  const gateScores: Record<string, number> = {};
+  let regime: string | undefined;
+  for (const g of result.gate_results) {
+    if (g.gate === "meta_label") continue;
+    if (g.gate && typeof g.score === "number") gateScores[g.gate] = g.score;
+    if (g.gate === "regime") { const r = g.details?.regime; if (typeof r === "string") regime = r; }
+  }
+  return { gateScores, regime, approval_score: result.approval_score };
+}
+
+export type MetaLabelSizing = {
+  model: MetaModel;
+  /** Size-factor floor — meta can trim a confident-bucket size down to this × the
+   *  bucket size, never below. Default 0.25. */
+  floor?: number;
+  /** P(win) at/above which the bucket size is kept in full (factor 1). Default 0.60. */
+  pUpper?: number;
+  /** P(win) at/below which the factor hits the floor. Default 0.45. */
+  pLower?: number;
+};
+
+/** TRIM-ONLY size factor from P(win): 1 at/above pUpper, floor at/below pLower,
+ *  linear between. Always ∈ [floor, 1] — the bucket is the cap; the learned P(win)
+ *  only trims low-confidence approvals. Never > 1 (no up-sizing past the bucket). */
+export function metaLabelSizeFactor(
+  pWin: number,
+  opts: { floor?: number; pUpper?: number; pLower?: number } = {},
+): number {
+  const floor = opts.floor ?? 0.25, pUpper = opts.pUpper ?? 0.60, pLower = opts.pLower ?? 0.45;
+  if (pWin >= pUpper) return 1;
+  if (pWin <= pLower) return floor;
+  return floor + ((pWin - pLower) / (pUpper - pLower)) * (1 - floor);
+}
+
+/**
+ * Apply the meta-labeler to a finalized decision: predict P(win) from its gate
+ * features and TRIM the size_multiplier by the resulting factor. Meta-labeling
+ * sizes only — it NEVER flips direction and NEVER resurrects a 0-size decision
+ * (REJECTED/WATCHLIST/KILL keep size 0). Records meta_pwin + meta_size_factor.
+ */
+export function applyMetaLabel(result: DecisionResult, sizing: MetaLabelSizing): DecisionResult {
+  if (result.size_multiplier <= 0 || sizing.model.n <= 0) return result; // nothing to size / no model
+  const pWin = metaLabelProb(featureRowFromResult(result), sizing.model);
+  const factor = metaLabelSizeFactor(pWin, sizing);
+  return { ...result, size_multiplier: result.size_multiplier * factor, meta_pwin: pWin, meta_size_factor: factor };
 }

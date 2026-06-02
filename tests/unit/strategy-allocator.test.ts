@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { correlation, metaAllocate, strategyHealth, diversificationRatio } from "@/lib/meta/strategy-allocator";
+import { correlation, metaAllocate, strategyHealth, diversificationRatio, betaPosteriorMean, betaLowerBound, evidenceFromReturns } from "@/lib/meta/strategy-allocator";
 
 function rng(seed: number) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const series = (seed: number, n = 60, vol = 0.02) => { const r = rng(seed); return Array.from({ length: n }, () => (r() - 0.5) * 2 * vol); };
@@ -55,6 +55,45 @@ describe("strategyHealth — decay detection", () => {
     expect(h.decaying).toBe(false);
     expect(h.annSharpe).toBeGreaterThan(0);
     expect(h.maxDrawdown).toBeLessThan(0.05);
+  });
+});
+
+describe("Bayesian evidence shrinkage (build 3)", () => {
+  it("posterior mean pulls a thin record toward the prior; converges with evidence", () => {
+    expect(betaPosteriorMean(3, 0)).toBeCloseTo(5 / 7, 6);       // 3/3 → Beta(5,2) mean 0.714, shrunk from 1.0
+    expect(betaPosteriorMean(0, 0)).toBeCloseTo(0.5, 6);         // no data → prior mean
+    expect(betaPosteriorMean(600, 400)).toBeGreaterThan(0.59);   // lots of evidence → ≈ empirical 0.6
+    expect(betaPosteriorMean(600, 400)).toBeLessThan(0.605);
+  });
+
+  it("the funding-bug fix: PROVEN (200×0.6) outranks LUCKY-THIN (3×1.0) on the lower bound", () => {
+    const lucky = betaLowerBound(3, 0);       // 3/3 win
+    const proven = betaLowerBound(120, 80);   // 200 trades, 60%
+    expect(betaPosteriorMean(3, 0)).toBeGreaterThan(betaPosteriorMean(120, 80)); // point estimate: lucky LOOKS better
+    expect(proven).toBeGreaterThan(lucky);    // …but the evidence-aware lower bound flips it — proven wins
+  });
+
+  it("evidenceFromReturns counts positive periods as wins", () => {
+    expect(evidenceFromReturns([0.1, -0.2, 0.3, 0, -0.1])).toEqual({ wins: 2, trades: 5 });
+  });
+
+  it("metaAllocate with evidence down-weights the lucky-thin strategy vs the proven one", () => {
+    // identical return series ⇒ vol + correlation factors are equal for both,
+    // so ONLY the evidence factor distinguishes them.
+    const r = series(7);
+    const w = metaAllocate(
+      [{ strategy: "proven", returns: [...r] }, { strategy: "lucky", returns: [...r] }],
+      { evidence: { proven: { wins: 120, trades: 200 }, lucky: { wins: 3, trades: 3 } } },
+    );
+    expect(w.proven).toBeGreaterThan(w.lucky);
+    expect(w.proven + w.lucky).toBeCloseTo(1, 6);
+  });
+
+  it("no evidence supplied ⇒ allocation unchanged (backward compat)", () => {
+    const strats = [{ strategy: "x", returns: series(1) }, { strategy: "y", returns: series(2) }];
+    const base = metaAllocate(strats);
+    const same = metaAllocate(strats, {});
+    expect(same).toEqual(base);
   });
 });
 

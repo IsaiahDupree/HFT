@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { trainMetaLabel, metaLabelProb, kellySize, featurize, buildVocab } from "@/lib/decision/meta-label";
+import { trainMetaLabel, metaLabelProb, kellySize, featurize, buildVocab, featureRowFromResult, metaLabelSizeFactor, applyMetaLabel } from "@/lib/decision/meta-label";
 import type { LabeledDecision } from "@/lib/decision/calibration";
+import type { DecisionResult } from "@/lib/decision/types";
 
 function makeRows(): LabeledDecision[] {
   // separable: winners have high gate scores in 'trending'; losers low in 'chop'.
@@ -50,5 +51,55 @@ describe("meta-label — kellySize", () => {
     expect(kellySize(0.8)).toBeGreaterThan(kellySize(0.6));
     expect(kellySize(0.2)).toBe(0);                    // negative edge → clamped 0
     expect(kellySize(0.99)).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("meta-label — serving (featureRowFromResult / sizeFactor / applyMetaLabel)", () => {
+  const baseResult = (over: Partial<DecisionResult> = {}): DecisionResult => ({
+    decision: "APPROVED_FULL", approval_score: 0.85, size_multiplier: 1, decision_ts: "t",
+    gate_results: [
+      { gate: "edge", status: "pass", score: 0.9, action: "CONTINUE", reason: "" },
+      { gate: "regime", status: "pass", score: 0.8, action: "CONTINUE", reason: "", details: { regime: "trending" } },
+      { gate: "meta_label", status: "pass", score: 0.5, action: "CONTINUE", reason: "" }, // must be IGNORED (no leakage)
+    ],
+    ...over,
+  });
+
+  it("featureRowFromResult mirrors the loader extraction and drops the synthetic meta_label gate", () => {
+    const fr = featureRowFromResult(baseResult());
+    expect(fr.gateScores).toEqual({ edge: 0.9, regime: 0.8 }); // meta_label excluded
+    expect(fr.regime).toBe("trending");
+    expect(fr.approval_score).toBe(0.85);
+  });
+
+  it("metaLabelSizeFactor: trim-only — 1 above pUpper, floor below pLower, monotonic, never >1", () => {
+    expect(metaLabelSizeFactor(0.9)).toBe(1);
+    expect(metaLabelSizeFactor(0.3)).toBe(0.25);                       // floor
+    expect(metaLabelSizeFactor(0.525)).toBeCloseTo(0.625, 6);         // midpoint of [0.45,0.60]→[0.25,1]
+    expect(metaLabelSizeFactor(0.58)).toBeGreaterThan(metaLabelSizeFactor(0.50));
+    expect(metaLabelSizeFactor(0.999)).toBeLessThanOrEqual(1);
+  });
+
+  it("applyMetaLabel trims a low-confidence APPROVED_FULL but never resurrects a 0-size decision", () => {
+    const model = trainMetaLabel(makeRows(), { iters: 1200 });
+    // a losing-looking feature set → low P(win) → factor < 1 → size trimmed below the bucket's 1.0
+    const losing = baseResult({
+      approval_score: 0.32,
+      gate_results: [
+        { gate: "edge", status: "pass", score: 0.3, action: "CONTINUE", reason: "" },
+        { gate: "signal_agreement", status: "pass", score: 0.35, action: "CONTINUE", reason: "" },
+        { gate: "regime", status: "pass", score: 0.4, action: "CONTINUE", reason: "", details: { regime: "chop" } },
+      ],
+    });
+    const trimmed = applyMetaLabel(losing, { model });
+    expect(trimmed.size_multiplier).toBeLessThan(1);
+    expect(trimmed.size_multiplier).toBeGreaterThanOrEqual(0.25);     // floored, not zeroed
+    expect(trimmed.meta_pwin).toBeLessThan(0.5);
+    expect(trimmed.meta_size_factor).toBe(trimmed.size_multiplier);   // bucket size was 1.0
+
+    // a REJECTED (size 0) decision is never resurrected
+    const rejected = applyMetaLabel(baseResult({ decision: "REJECTED", size_multiplier: 0 }), { model });
+    expect(rejected.size_multiplier).toBe(0);
+    expect(rejected.meta_pwin).toBeUndefined();
   });
 });

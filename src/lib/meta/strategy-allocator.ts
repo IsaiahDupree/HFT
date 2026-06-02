@@ -39,16 +39,68 @@ export function correlation(a: number[], b: number[]): number {
 
 export type StratReturns = { strategy: string; returns: number[] };
 
+// ─── BAYESIAN EVIDENCE SHRINKAGE (build 3) ─────────────────────────────────
+// The funding bug: "a 3-trade, 100%-win strategy outranks a 200-trade, 60%-win
+// proven one." Raw win-rate ignores HOW MUCH evidence backs it. The fix is to
+// score a strategy by the LOWER credible bound of its Beta-posterior win-rate,
+// not the point estimate — a thin record has a wide posterior, so its lower
+// bound stays modest, while a long record's tight posterior keeps a high bound.
+
+export type Evidence = { wins: number; trades: number };
+
+/** Posterior mean of Beta(priorAlpha + wins, priorBeta + losses). Pulls the
+ *  empirical win-rate toward the prior mean (default Beta(2,2) ⇒ 0.5) for small
+ *  samples; converges to the empirical rate as evidence accumulates. */
+export function betaPosteriorMean(
+  wins: number, losses: number,
+  opts: { priorAlpha?: number; priorBeta?: number } = {},
+): number {
+  const a = (opts.priorAlpha ?? 2) + Math.max(0, wins);
+  const b = (opts.priorBeta ?? 2) + Math.max(0, losses);
+  return a / (a + b);
+}
+
+/** Lower credible bound (posterior mean − z·posterior std) of the Beta win-rate.
+ *  The evidence-aware score: a 3/3 record → Beta(5,2), mean≈0.71 but std≈0.16 ⇒
+ *  LCB(z=1)≈0.55; a 120/200 record → Beta(122,82), mean≈0.60 std≈0.034 ⇒ LCB≈0.56.
+ *  So PROVEN (0.56) edges LUCKY-THIN (0.55) — exactly the fix. Clamped [0,1]. */
+export function betaLowerBound(
+  wins: number, losses: number,
+  opts: { priorAlpha?: number; priorBeta?: number; z?: number } = {},
+): number {
+  const a = (opts.priorAlpha ?? 2) + Math.max(0, wins);
+  const b = (opts.priorBeta ?? 2) + Math.max(0, losses);
+  const m = a / (a + b);
+  const sd = Math.sqrt((a * b) / ((a + b) ** 2 * (a + b + 1)));
+  return Math.max(0, Math.min(1, m - (opts.z ?? 1) * sd));
+}
+
+/** Derive {wins, trades} from a return series (a period is a "win" if > 0). The
+ *  convenience path when the caller has returns but no explicit trade ledger. */
+export function evidenceFromReturns(returns: number[]): Evidence {
+  return { wins: returns.filter((r) => r > 0).length, trades: returns.length };
+}
+
 /**
  * DE-CORRELATED inverse-vol allocation. Base weight ∝ 1/σ (risk-parity-lite:
  * lower-vol strategies get more), scaled by a diversification factor
  * (1 − corrPenalty · avgCorrelationToOthers, floored) so strategies correlated
  * with the pack are penalized and uncorrelated ones boosted. Returns weights
  * summing to 1. Optionally drops strategies flagged `decaying`.
+ *
+ * EVIDENCE SHRINKAGE: when `evidence` (per-strategy win/trade counts) is supplied
+ * — or `shrinkByHitRate` derives it from each return series — the raw weight is
+ * additionally scaled by the Beta lower-credible-bound win-rate, so a strategy
+ * with a thin/lucky record is down-weighted relative to a proven one even at
+ * equal vol and correlation. No evidence ⇒ behaviour unchanged (backward compat).
  */
 export function metaAllocate(
   strats: StratReturns[],
-  opts: { corrPenalty?: number; minVol?: number; dropDecaying?: boolean; periodsPerYear?: number } = {},
+  opts: {
+    corrPenalty?: number; minVol?: number; dropDecaying?: boolean; periodsPerYear?: number;
+    evidence?: Record<string, Evidence>; shrinkByHitRate?: boolean; evidenceZ?: number;
+    priorAlpha?: number; priorBeta?: number;
+  } = {},
 ): Record<string, number> {
   let pool = strats.filter((s) => s.returns.length >= 2);
   if (opts.dropDecaying) pool = pool.filter((s) => !strategyHealth(s.returns, { periodsPerYear: opts.periodsPerYear }).decaying);
@@ -57,13 +109,19 @@ export function metaAllocate(
   if (n === 1) return { [pool[0].strategy]: 1 };
   const corrPenalty = opts.corrPenalty ?? 1;
   const minVol = opts.minVol ?? 1e-6;
+  const useEvidence = !!opts.evidence || !!opts.shrinkByHitRate;
   const raw = pool.map((s, i) => {
     const invVol = 1 / Math.max(minVol, std(s.returns));            // risk-parity-lite
     let sum = 0, cnt = 0;
     for (let j = 0; j < n; j++) if (j !== i) { sum += correlation(s.returns, pool[j].returns); cnt++; }
     const avgCorr = cnt ? sum / cnt : 0;
     const divFactor = Math.max(0.05, 1 - corrPenalty * avgCorr);    // penalize correlated, boost anti-correlated
-    return invVol * divFactor;
+    let evidenceFactor = 1;
+    if (useEvidence) {
+      const ev = opts.evidence?.[s.strategy] ?? evidenceFromReturns(s.returns);
+      evidenceFactor = betaLowerBound(ev.wins, ev.trades - ev.wins, { z: opts.evidenceZ, priorAlpha: opts.priorAlpha, priorBeta: opts.priorBeta });
+    }
+    return invVol * divFactor * evidenceFactor;
   });
   const tot = raw.reduce((a, b) => a + b, 0) || 1;
   const out: Record<string, number> = {};

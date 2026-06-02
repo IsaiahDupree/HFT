@@ -117,7 +117,8 @@
     "backtest:pairs": "tsx scripts/backtest-pairs.ts",
     "record:dydx": "tsx scripts/record-l2-dydx.ts",
     "backtest:dydx:mm": "tsx scripts/backtest-dydx-mm.ts",
-    "xsection:signal": "tsx scripts/xsection-signal.ts"
+    "xsection:signal": "tsx scripts/xsection-signal.ts",
+    "xsection:paper": "tsx scripts/xsection-paper.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

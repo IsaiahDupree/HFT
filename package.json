@@ -121,7 +121,8 @@
     "xsection:paper": "tsx scripts/xsection-paper.ts",
     "meta:allocate": "tsx scripts/meta-allocate.ts",
     "train:metalabel": "tsx scripts/train-meta-label.ts",
-    "build:regime-fit": "tsx scripts/build-regime-fit-table.ts"
+    "build:regime-fit": "tsx scripts/build-regime-fit-table.ts",
+    "ingest:binance": "tsx scripts/load-binance-history.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

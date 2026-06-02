@@ -96,5 +96,43 @@ export function asMmSignalStrategy(
   };
 }
 
+/**
+ * Dollar-space inventory-aware market-maker for CONTINUOUS venues (dYdX/Coinbase $).
+ * The logit-space asMm* strategies are Polymarket-binary-only (they withdraw on
+ * pMid≥1). This quotes around a vol-widened, inventory-skewed reservation price in
+ * raw price units, caps risk by notional, and (with the engine's feeBps mode) earns
+ * the maker spread net of flat-bps fees. Simplified Avellaneda-Stoikov: the half-
+ * spread carries a γ·σ vol term; the reservation is skewed up to 2 half-spreads
+ * against inventory at the notional cap. No (0,1) clamp.
+ */
+export function asMmDollar(opts: { size: number; baseSpreadBps?: number; maxNotional?: number; gamma?: number; volHalfLife?: number }): Strategy {
+  const st: Quotes = {};
+  const baseSpreadBps = opts.baseSpreadBps ?? 1.0;
+  const maxNotional = opts.maxNotional ?? 50_000;
+  const gamma = opts.gamma ?? 1.0;
+  const lambda = Math.exp(-Math.LN2 / (opts.volHalfLife ?? 50));
+  const snapBidD = (p: number, tick: number) => Math.floor(p / tick) * tick;
+  const snapAskD = (p: number, tick: number) => Math.ceil(p / tick) * tick;
+  let ewmaVar = 0, prevMid = 0;
+  return (bt, ev) => {
+    if (ev.kind !== "book") return;
+    const { bidPx, askPx } = bt.book;
+    if (bidPx <= 0 || askPx <= bidPx) { withdraw(bt, st, ev.ts); return; }
+    const mid = (bidPx + askPx) / 2;
+    if (prevMid > 0) { const ret = mid / prevMid - 1; ewmaVar = lambda * ewmaVar + (1 - lambda) * ret * ret; } // EWMA per-event vol (no lookahead: prior mid only)
+    prevMid = mid;
+    const sigma = Math.sqrt(ewmaVar);
+    const invNotional = bt.inventory * mid;
+    const half = Math.max(baseSpreadBps / 1e4 * mid, (askPx - bidPx) / 2) + gamma * sigma * mid; // base or market half-spread, widened by vol
+    const reservation = mid - (invNotional / maxNotional) * half * 2; // skew against inventory
+    const bid = snapBidD(reservation - half, bt.tick);
+    const ask = snapAskD(reservation + half, bt.tick);
+    withdraw(bt, st, ev.ts);
+    if (bid >= ask) return;
+    if (invNotional < maxNotional) st.bidOid = bt.placeLimit(ev.ts, "bid", bid, opts.size);   // not too long → quote bid
+    if (invNotional > -maxNotional) st.askOid = bt.placeLimit(ev.ts, "ask", ask, opts.size);  // not too short → quote ask
+  };
+}
+
 /** Acceptance baseline: places nothing — must return PnL exactly 0. */
 export const doNothingStrategy: Strategy = () => {};

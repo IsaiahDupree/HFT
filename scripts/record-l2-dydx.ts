@@ -45,10 +45,18 @@ function best(side: Map<number, number>, max: boolean): [number, number] | null 
   for (const p of side.keys()) { if (bp === null || (max ? p > bp : p < bp)) bp = p; }
   return bp === null ? null : [bp, side.get(bp)!];
 }
-function emitBook(m: string) {
+// Only emit when the TOP-OF-BOOK actually changes — deep-level deltas leave the
+// spread intact, and emitting duplicates floods the OFI regression with zero-OFI
+// noise (verification bug #2). `ts` is the local RECEIVE time, shared with the
+// trade events from the same message, so book/trade causality is preserved (bug #1).
+const prevTop: Record<string, string> = {};
+function emitBook(m: string, ts: number) {
   const bb = best(books[m].bids, true), ba = best(books[m].asks, false);
   if (!bb || !ba || bb[0] >= ba[0]) return;
-  const ev: MarketEvent = { ts: Date.now() / 1000, kind: "book", bidPx: bb[0], bidSz: bb[1], askPx: ba[0], askSz: ba[1] };
+  const key = `${bb[0]}:${bb[1]}:${ba[0]}:${ba[1]}`;
+  if (prevTop[m] === key) return; // top-of-book unchanged → skip the duplicate
+  prevTop[m] = key;
+  const ev: MarketEvent = { ts, kind: "book", bidPx: bb[0], bidSz: bb[1], askPx: ba[0], askSz: ba[1] };
   events[m].push(ev); counts[m].book++;
   appendFileSync(`${outDir}/${m}.ws.jsonl`, JSON.stringify(ev) + "\n");
 }
@@ -62,17 +70,17 @@ ws.addEventListener("open", () => {
   }
 });
 ws.addEventListener("message", (e: MessageEvent) => {
+  const ts = Date.now() / 1000; // single local receive clock for books AND trades (bug #1)
   let msg: any; try { msg = JSON.parse(e.data as string); } catch { return; }
   const m = msg.id as string;
   if (msg.channel === "v4_orderbook" && (msg.type === "subscribed" || msg.type === "channel_data") && m in books) {
+    if (msg.type === "subscribed") { books[m].bids.clear(); books[m].asks.clear(); delete prevTop[m]; } // fresh snapshot (bug #3)
     const c = msg.contents ?? {};
     if (c.bids) applyLevels(books[m].bids, c.bids);
     if (c.asks) applyLevels(books[m].asks, c.asks);
-    emitBook(m);
+    emitBook(m, ts);
   } else if (msg.channel === "v4_trades" && (msg.type === "subscribed" || msg.type === "channel_data") && m in books) {
     for (const t of (msg.contents?.trades ?? [])) {
-      const ts = Date.parse(t.createdAt) / 1000;
-      if (!Number.isFinite(ts)) continue;
       const ev: MarketEvent = { ts, kind: "trade", price: +t.price, size: +t.size, aggressor: (t.side === "BUY" ? "BUY" : "SELL") };
       events[m].push(ev); counts[m].trade++;
       appendFileSync(`${outDir}/${m}.ws.jsonl`, JSON.stringify(ev) + "\n");

@@ -55,7 +55,7 @@ export function loadLabeledDecisions(q: CalibrationLoaderQuery = {}): LabeledDec
   const rows = db()
     .prepare(
       `SELECT
-         d.id, d.approval_score, d.decision, d.strategy_kind, d.capsule_id,
+         d.id, d.approval_score, d.decision, d.strategy_kind, d.capsule_id, d.gate_results_json,
          COALESCE(SUM(x.realized_pnl_usd), 0) AS realized_pnl
        FROM decision_journal d
        JOIN paper_trades e ON e.decision_journal_id = d.id AND e.intent = 'entry'
@@ -72,15 +72,28 @@ export function loadLabeledDecisions(q: CalibrationLoaderQuery = {}): LabeledDec
       decision: string;
       strategy_kind: string;
       capsule_id: string | null;
+      gate_results_json: string;
       realized_pnl: number;
     }>;
 
-  return rows.map((r) => ({
-    id: r.id,
-    approval_score: r.approval_score,
-    decision: r.decision,
-    strategy_kind: r.strategy_kind,
-    capsule_id: r.capsule_id ?? undefined,
-    won: r.realized_pnl > 0,
-  }));
+  return rows.map((r) => {
+    // parse the (strategy × regime × gate-scores) features from the journaled gates.
+    let regime: string | undefined, gateScores: Record<string, number> | undefined;
+    try {
+      const gates = JSON.parse(r.gate_results_json) as Array<{ gate?: string; score?: number; details?: { regime?: string } }>;
+      gateScores = {};
+      for (const g of gates) { if (g.gate && typeof g.score === "number") gateScores[g.gate] = g.score; if (g.gate === "regime") regime = g.details?.regime; }
+    } catch { /* malformed → leave undefined */ }
+    return {
+      id: r.id,
+      approval_score: r.approval_score,
+      decision: r.decision,
+      strategy_kind: r.strategy_kind,
+      capsule_id: r.capsule_id ?? undefined,
+      won: r.realized_pnl > 0,
+      regime,
+      gateScores,
+      realizedPnl: r.realized_pnl,
+    };
+  });
 }

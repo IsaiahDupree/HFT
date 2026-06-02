@@ -38,6 +38,13 @@ export type LabeledDecision = {
   /** Optional metadata for filtered views. */
   strategy_kind?: string;
   capsule_id?: string;
+  /** Classified market regime at decision time (parsed from gate_results_json) —
+   *  the (strategy × regime) ledger key for the meta-labeler. */
+  regime?: string;
+  /** Per-gate scores at decision time (gate name → score) — the meta-labeler's features. */
+  gateScores?: Record<string, number>;
+  /** Net realized PnL of the round-trip (magnitude matters for meta-label sizing). */
+  realizedPnl?: number;
 };
 
 export type CalibrationBucket = {

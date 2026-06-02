@@ -21,6 +21,7 @@ import { getBinaryMeta } from "./short-binaries";
 import { runDecisionPipeline } from "@/lib/decision/pipeline";
 import { recordDecision } from "@/lib/decision/journal";
 import { loadMetaModel } from "@/lib/decision/meta-label-store";
+import { activeRegimeFitTable } from "@/lib/decision/regime-fit-table";
 import type { MetaLabelSizing } from "@/lib/decision/meta-label";
 import type { DecisionContext } from "@/lib/decision/types";
 import type { Position, Signal } from "./types";
@@ -269,7 +270,7 @@ export async function routeArenaSignal(
         snapshot: undefined, // no snapshot at this layer in v1; regime gate will return 'unknown' and score 0.7
         ts: new Date().toISOString(),
       };
-      const decisionResult = runDecisionPipeline(decisionCtx, { metaLabel: metaLabelSizing() });
+      const decisionResult = runDecisionPipeline(decisionCtx, { metaLabel: metaLabelSizing(), regimeFitTable: activeRegimeFitTable() });
       recordDecision(decisionCtx, decisionResult);
 
       // ─── ACTIVE ENFORCEMENT ────────────────────────────────────────────

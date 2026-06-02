@@ -13,7 +13,7 @@
  * the gate rationale strings, and robust on the small N we have (vs a GBM that
  * would overfit). No DB/IO.
  */
-import type { LabeledDecision } from "./calibration";
+import { metaFeatureScoreForGate, type LabeledDecision } from "./calibration";
 import type { DecisionResult, GateResult } from "./types";
 
 const sigmoid = (z: number) => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
@@ -90,7 +90,7 @@ export function featureRowFromResult(
   let regime: string | undefined;
   for (const g of result.gate_results) {
     if (g.gate === "meta_label") continue;
-    if (g.gate && typeof g.score === "number") gateScores[g.gate] = g.score;
+    if (g.gate && typeof g.score === "number") gateScores[g.gate] = metaFeatureScoreForGate(g.gate, g.score, g.details);
     if (g.gate === "regime") { const r = g.details?.regime; if (typeof r === "string") regime = r; }
   }
   return { gateScores, regime, approval_score: result.approval_score };

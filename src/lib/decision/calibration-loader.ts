@@ -12,7 +12,7 @@
  * requires the sim engine to record "shadow paper trades" alongside real ones.
  */
 import { db } from "@/lib/db/client";
-import type { LabeledDecision } from "./calibration";
+import { metaFeatureScoreForGate, type LabeledDecision } from "./calibration";
 
 export type CalibrationLoaderQuery = {
   /** ISO timestamp lower bound. Default: 30 days ago. */
@@ -80,9 +80,9 @@ export function loadLabeledDecisions(q: CalibrationLoaderQuery = {}): LabeledDec
     // parse the (strategy × regime × gate-scores) features from the journaled gates.
     let regime: string | undefined, gateScores: Record<string, number> | undefined;
     try {
-      const gates = JSON.parse(r.gate_results_json) as Array<{ gate?: string; score?: number; details?: { regime?: string } }>;
+      const gates = JSON.parse(r.gate_results_json) as Array<{ gate?: string; score?: number; details?: { regime?: string; regime_fit_static?: number } }>;
       gateScores = {};
-      for (const g of gates) { if (g.gate && typeof g.score === "number") gateScores[g.gate] = g.score; if (g.gate === "regime") regime = g.details?.regime; }
+      for (const g of gates) { if (g.gate && typeof g.score === "number") gateScores[g.gate] = metaFeatureScoreForGate(g.gate, g.score, g.details); if (g.gate === "regime") regime = g.details?.regime; }
     } catch { /* malformed → leave undefined */ }
     return {
       id: r.id,

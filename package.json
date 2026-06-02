@@ -120,7 +120,8 @@
     "xsection:signal": "tsx scripts/xsection-signal.ts",
     "xsection:paper": "tsx scripts/xsection-paper.ts",
     "meta:allocate": "tsx scripts/meta-allocate.ts",
-    "train:metalabel": "tsx scripts/train-meta-label.ts"
+    "train:metalabel": "tsx scripts/train-meta-label.ts",
+    "build:regime-fit": "tsx scripts/build-regime-fit-table.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

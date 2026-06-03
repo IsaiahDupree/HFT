@@ -19,7 +19,10 @@
 import "./_env.ts";
 import { getCandles, listProducts, closeTsdb } from "../src/lib/db/candle-store.ts";
 import { type DailyCandle } from "../src/lib/backtest/candle/engine.ts";
-import { donchianBreakout, smaTrend, zMeanReversion } from "../src/lib/backtest/candle/strategies.ts";
+import {
+  donchianBreakout, smaTrend, zMeanReversion,
+  emaMomentum, macdTrend, rsiMomentum, atrBreakout, supertrend, volRegimeFilter,
+} from "../src/lib/backtest/candle/strategies.ts";
 import { applySizing, turnover } from "../src/lib/backtest/candle/sizing.ts";
 import { deflatedSharpe, median, multiFoldWalkForward, pbo, sharpe, variantReturns } from "../src/lib/backtest/candle/stats.ts";
 
@@ -53,6 +56,13 @@ function allVariants(c: DailyCandle[]): V[] {
   for (const d of [10, 20, 50, 100, 200]) raw.push({ label: `sma${d}d`, positions: smaTrend(c, W(d)) });
   for (const d of [10, 20, 55, 100]) raw.push({ label: `don${d}d`, positions: donchianBreakout(c, W(d)) });
   for (const d of [10, 20, 30]) for (const ze of [1, 1.5, 2]) for (const zx of [0, 0.5]) raw.push({ label: `z${d}d/${ze}/${zx}`, positions: zMeanReversion(c, W(d), ze, zx) });
+  // momentum-biased families (EMA/MACD/RSI-momentum/ATR-breakout/Supertrend) + a vol-regime gate.
+  for (const [f, s] of [[10, 30], [20, 50], [12, 26]] as [number, number][]) raw.push({ label: `ema${f}/${s}`, positions: emaMomentum(c, W(f), W(s)) });
+  raw.push({ label: "macd12/26/9", positions: macdTrend(c, W(12), W(26), W(9)) });
+  for (const d of [14, 21]) raw.push({ label: `rsimom${d}`, positions: rsiMomentum(c, W(d), 55, 45) });
+  for (const d of [20, 55]) for (const m of [0.5, 1]) raw.push({ label: `atrbo${d}/${m}`, positions: atrBreakout(c, W(d), m) });
+  for (const d of [10, 14]) for (const m of [2, 3]) raw.push({ label: `super${d}/${m}`, positions: supertrend(c, W(d), m) });
+  raw.push({ label: "ema20/50@hivol", positions: volRegimeFilter(c, emaMomentum(c, W(20), W(50)), W(14), "high", W(100)) });
   if (!sized) return raw;
   const sizedV: V[] = raw.map((v) => ({
     label: `${v.label}+vt`,
@@ -69,7 +79,11 @@ const coinArg = process.argv.indexOf("--coins");
 const coins = coinArg >= 0 && process.argv[coinArg + 1]
   ? process.argv[coinArg + 1].split(",").map((s) => s.trim())
   : await listProducts(GRAN);
-const minBars = Math.round(600 * (barsPerDay > 1 ? barsPerDay / 4 : 1)); // need enough bars to be meaningful
+// Need enough bars to be meaningful AND to warm up the LARGEST registered window
+// (W(200)); otherwise that variant is a silent all-zero no-op that still pollutes the
+// PBO / Deflated-Sharpe multiple-testing math.
+const maxWindow = Math.max(2, Math.round(200 * barsPerDay));
+const minBars = Math.max(Math.round(600 * (barsPerDay > 1 ? barsPerDay / 4 : 1)), maxWindow + Math.round(60 * barsPerDay));
 
 console.log(`\nharden-priors — ${GRAN}${sized ? " +inverse-vol sizing" : ""} · PBO (C(${nBlocks},${nBlocks / 2})) + Deflated Sharpe + ${folds}-fold WF, ${feeBps}bps/turn\n`);
 console.log(`  ${"coin".padEnd(10)} ${"best".padEnd(16)} ${"PBO".padEnd(6)} ${"DSR".padEnd(6)} ${"medOOS".padEnd(8)} ${"folds(OOS)".padEnd(20)} ${"turn×".padEnd(7)} verdict`);

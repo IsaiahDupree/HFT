@@ -32,6 +32,7 @@ beforeEach(() => {
     ARENA_ACTIVATE_MIN_PNL_PCT: process.env.ARENA_ACTIVATE_MIN_PNL_PCT,
     ARENA_ACTIVATE_MAX_DD_PCT: process.env.ARENA_ACTIVATE_MAX_DD_PCT,
     ARENA_ACTIVATE_WINDOW_DAYS: process.env.ARENA_ACTIVATE_WINDOW_DAYS,
+    ARENA_ACTIVATE_PROOF_COUNCIL: process.env.ARENA_ACTIVATE_PROOF_COUNCIL,
   };
   for (const k of Object.keys(originalEnv)) delete process.env[k];
   mockReplay = { pnl_pct: 0, max_dd_pct: 0, fitness: 0, trades_count: 0, win_rate: 0, starting_cash: 1000, ending_equity: 1000, ticks: 0 };
@@ -154,6 +155,62 @@ describe("activateCapsule — gate logic", () => {
     const { activateCapsule } = await import("@/lib/arena/championship");
     const result = activateCapsule(id, "operator-test");
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("activateCapsule — Proof Council gate (opt-in ARENA_ACTIVATE_PROOF_COUNCIL=1)", () => {
+  it("is OFF by default — a council-failing replay still activates on the legacy gate", async () => {
+    const { capsuleId } = await seedPaperAndCapsule();
+    // -1% pnl passes the -2% legacy floor, but is net-NEGATIVE → council would block.
+    mockReplay = { ...mockReplay, pnl_pct: -0.01, max_dd_pct: 0.05, trades_count: 60, win_rate: 0.6 };
+    const { activateCapsule } = await import("@/lib/arena/championship");
+    expect(activateCapsule(capsuleId, "operator-test").ok).toBe(true); // flag unset → legacy only
+  });
+
+  it("ON: BLOCKS a capsule that passes the legacy gate but is net-negative (council is stricter)", async () => {
+    const { capsuleId } = await seedPaperAndCapsule();
+    process.env.ARENA_ACTIVATE_PROOF_COUNCIL = "1";
+    mockReplay = { ...mockReplay, pnl_pct: -0.01, max_dd_pct: 0.05, trades_count: 60, win_rate: 0.6 };
+    const { activateCapsule } = await import("@/lib/arena/championship");
+    const result = activateCapsule(capsuleId, "operator-test");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toMatch(/proof council REPAIR_FIRST/);
+      expect(result.council?.verdict).toBe("REPAIR_FIRST");
+    }
+  });
+
+  it("ON: BLOCKS a too-thin sample even with positive PnL", async () => {
+    const { capsuleId } = await seedPaperAndCapsule();
+    process.env.ARENA_ACTIVATE_PROOF_COUNCIL = "1";
+    mockReplay = { ...mockReplay, pnl_pct: 0.05, max_dd_pct: 0.05, trades_count: 5, win_rate: 1 };
+    const { activateCapsule } = await import("@/lib/arena/championship");
+    const result = activateCapsule(capsuleId, "operator-test");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.council?.skeptic.some((s) => /sample only 5 trades/.test(s))).toBe(true);
+  });
+
+  it("ON: ACTIVATES a net-positive, deep-enough, low-DD capsule and returns the ADVOCATE_APPROVED council", async () => {
+    const { capsuleId } = await seedPaperAndCapsule();
+    process.env.ARENA_ACTIVATE_PROOF_COUNCIL = "1";
+    mockReplay = { ...mockReplay, pnl_pct: 0.05, max_dd_pct: 0.10, trades_count: 60, win_rate: 0.6 };
+    const { activateCapsule } = await import("@/lib/arena/championship");
+    const result = activateCapsule(capsuleId, "operator-test");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.council?.verdict).toBe("ADVOCATE_APPROVED");
+  });
+
+  it("ON: logs a capsule-activation-blocked event with the council verdict", async () => {
+    const { capsuleId } = await seedPaperAndCapsule();
+    process.env.ARENA_ACTIVATE_PROOF_COUNCIL = "1";
+    mockReplay = { ...mockReplay, pnl_pct: -0.01, max_dd_pct: 0.05, trades_count: 60, win_rate: 0.6 };
+    const { activateCapsule } = await import("@/lib/arena/championship");
+    activateCapsule(capsuleId, "operator-test");
+    const { db } = await import("@/lib/db/client");
+    const evt = db().prepare(
+      `SELECT summary FROM evolution_log WHERE event_type = 'capsule-activation-blocked' ORDER BY id DESC LIMIT 1`,
+    ).get() as { summary: string } | undefined;
+    expect(evt?.summary).toMatch(/BLOCKED by Proof Council/);
   });
 });
 

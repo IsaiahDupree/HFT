@@ -37,6 +37,8 @@ export type StrategyEvidence = {
   /** Average win / average loss per trade (% magnitudes) → the break-even win rate. */
   avgWinPct?: number;
   avgLossPct?: number;
+  /** Max drawdown fraction (0..1) — a universal risk blocker if it breaches `ddCeil`. */
+  maxDdPct?: number;
   /** Walk-forward out-of-sample annualized Sharpe. */
   oosSharpeAnn?: number;
   fullSharpeAnn?: number;
@@ -64,6 +66,8 @@ export type ProofCouncilResult = { verdict: ProofVerdict; action: string; advoca
 export type ProofThresholds = {
   minBars: number; pboHard: number; pboClean: number; dsrClean: number;
   minRegimes: number; minOosHoldFrac: number;
+  /** Max-drawdown ceiling (fraction) — breaching it is a universal REPAIR_FIRST blocker. */
+  ddCeil: number;
   // penny-lock objective
   pennyMinTrades: number;  // min trades to establish a high win rate
   pennyWinFloor: number;   // CI-low floor when no payoff given (high-confidence assumption)
@@ -71,7 +75,7 @@ export type ProofThresholds = {
 };
 export const DEFAULT_PROOF_THRESHOLDS: ProofThresholds = {
   minBars: 60, pboHard: 0.5, pboClean: 0.3, dsrClean: 0.95, minRegimes: 2, minOosHoldFrac: 0.5,
-  pennyMinTrades: 100, pennyWinFloor: 0.9, pennyMargin: 0.02,
+  ddCeil: 0.25, pennyMinTrades: 100, pennyWinFloor: 0.9, pennyMargin: 0.02,
 };
 
 /** Wilson score lower bound for a binomial win rate (z = 1.96 ≈ 95%). Pure. */
@@ -107,10 +111,12 @@ export function proofCouncil(ev: StrategyEvidence, thr: ProofThresholds = DEFAUL
   if (ev.cumPnlPct != null && ev.cumPnlPct < 0) blockers.push(`cumulative PnL ${pct(ev.cumPnlPct)} is negative net of ${ev.feeBps}bps fees`);
   if (ev.pbo != null && ev.pbo > thr.pboHard) blockers.push(`PBO ${ev.pbo.toFixed(2)} > ${thr.pboHard} — backtest is overfit (IS-best underperforms OOS)`);
   if (holdFrac != null && (ev.variants ?? 0) > 1 && holdFrac <= thr.minOosHoldFrac) blockers.push(`only ${ev.oosHold}/${ev.variants} variants held OOS (≤ half) — selection looks like noise`);
+  if (ev.maxDdPct != null && ev.maxDdPct > thr.ddCeil) blockers.push(`max drawdown ${(ev.maxDdPct * 100).toFixed(1)}% > ${(thr.ddCeil * 100).toFixed(0)}% ceiling — risk too high to deploy`);
 
   // ── advocate: what the metrics PROVE (cleared bars only) ──
   const advocate: string[] = [];
   if (ev.cumPnlPct != null && ev.cumPnlPct > 0) advocate.push(`cumulative PnL ${pct(ev.cumPnlPct)} net of ${ev.feeBps}bps fees over ${ev.bars} ${unit}`);
+  if (ev.maxDdPct != null && ev.maxDdPct <= thr.ddCeil) advocate.push(`max drawdown ${(ev.maxDdPct * 100).toFixed(1)}% within the ${(thr.ddCeil * 100).toFixed(0)}% ceiling`);
   if (ev.oosSharpeAnn != null && ev.oosSharpeAnn > 0) advocate.push(`OOS ann.Sharpe ${ev.oosSharpeAnn.toFixed(2)} HELD out-of-sample (walk-forward)`);
   if (holdFrac != null && holdFrac > thr.minOosHoldFrac) advocate.push(`${ev.oosHold}/${ev.variants} variants held OOS (majority-robust selection)`);
   if (ev.pbo != null && ev.pbo < thr.pboClean) advocate.push(`PBO ${ev.pbo.toFixed(2)} < ${thr.pboClean} — low backtest-overfit probability`);
@@ -171,12 +177,14 @@ function pennyLockCouncil(ev: StrategyEvidence, thr: ProofThresholds): ProofCoun
   if (ev.netRoiPct != null && ev.netRoiPct > 0) advocate.push(`net ROI ${pct(ev.netRoiPct)} on ${n} ${unit} — net positive even if tiny (the penny-lock objective)`);
   if (n > 0) advocate.push(`win ${(wr * 100).toFixed(1)}% on ${n} ${unit}, Wilson CI-low ${(ciLow * 100).toFixed(1)}%`);
   if (breakEven != null) advocate.push(`CI-low ${(ciLow * 100).toFixed(1)}% clears the ${(breakEven * 100).toFixed(1)}% break-even for a +${ev.avgWinPct}%/−${ev.avgLossPct}% payoff`);
+  if (ev.maxDdPct != null && ev.maxDdPct <= thr.ddCeil) advocate.push(`max drawdown ${(ev.maxDdPct * 100).toFixed(1)}% within the ${(thr.ddCeil * 100).toFixed(0)}% ceiling`);
 
   // blockers (→ REPAIR_FIRST): fails the penny-lock objective itself
   const blockers: string[] = [];
   if (n < thr.pennyMinTrades) blockers.push(`sample only ${n} ${unit} (< ${thr.pennyMinTrades}) — a high win rate is not yet established`);
   if (ev.netRoiPct != null && ev.netRoiPct <= 0) blockers.push(`net ROI ${pct(ev.netRoiPct)} ≤ 0 — a penny-lock that isn't net positive fails its own objective`);
   if (n >= thr.pennyMinTrades && ciLow <= winBar) blockers.push(`Wilson CI-low ${(ciLow * 100).toFixed(1)}% not above the ${(winBar * 100).toFixed(1)}% ${barName} — not provably a repeatable win`);
+  if (ev.maxDdPct != null && ev.maxDdPct > thr.ddCeil) blockers.push(`max drawdown ${(ev.maxDdPct * 100).toFixed(1)}% > ${(thr.ddCeil * 100).toFixed(0)}% ceiling — risk too high to deploy`);
   if (blockers.length) return { verdict: "REPAIR_FIRST", action: "do NOT deploy — the penny-lock objective (keep winning + stay net positive) is not met", advocate, skeptic: blockers };
 
   // gaps (→ PROVE_IT)

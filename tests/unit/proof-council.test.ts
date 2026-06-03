@@ -180,3 +180,25 @@ describe("proof-council — penny-lock certainty objective", () => {
     expect(proofCouncil(ev)).toEqual(proofCouncil(ev));
   });
 });
+
+describe("proof-council — drawdown ceiling (universal blocker)", () => {
+  it("a drawdown over the ceiling is a REPAIR_FIRST blocker under the edge objective", () => {
+    const r = proofCouncil({ ...HARDENED(), maxDdPct: 0.4 });
+    expect(r.verdict).toBe("REPAIR_FIRST");
+    expect(r.skeptic.some((s) => /max drawdown 40\.0% > 25% ceiling/.test(s))).toBe(true);
+  });
+  it("a drawdown within the ceiling becomes an advocate line and does not block approval", () => {
+    const r = proofCouncil({ ...HARDENED(), maxDdPct: 0.1 });
+    expect(r.verdict).toBe("ADVOCATE_APPROVED");
+    expect(r.advocate.some((a) => /max drawdown 10\.0% within the 25% ceiling/.test(a))).toBe(true);
+  });
+  it("a drawdown over the ceiling blocks the penny-lock objective too", () => {
+    const r = proofCouncil({ label: "p", objective: "penny_lock", bars: 252, feeBps: 0, nTrades: 252, winRate: 0.97, netRoiPct: 1.3, maxDdPct: 0.5 });
+    expect(r.verdict).toBe("REPAIR_FIRST");
+    expect(r.skeptic.some((s) => /max drawdown 50\.0% > 25% ceiling/.test(s))).toBe(true);
+  });
+  it("the ceiling is configurable", () => {
+    expect(proofCouncil({ ...HARDENED(), maxDdPct: 0.3 }).verdict).toBe("REPAIR_FIRST");                       // 30% > default 25%
+    expect(proofCouncil({ ...HARDENED(), maxDdPct: 0.3 }, { ...DEFAULT_PROOF_THRESHOLDS, ddCeil: 0.4 }).verdict).toBe("ADVOCATE_APPROVED"); // raise ceiling → OK
+  });
+});

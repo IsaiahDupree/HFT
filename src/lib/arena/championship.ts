@@ -16,6 +16,7 @@ import { attachCapsuleToChampionship, getPaperAgent } from "./db";
 import { insertEvolutionEvent } from "@/lib/db/queries";
 import { parseGenome } from "./genome";
 import { computeReplayFitness, type ReplayFitnessResult } from "./replay-fitness";
+import { proofCouncil, DEFAULT_PROOF_THRESHOLDS, type ProofCouncilResult } from "@/lib/backtest/proof-council";
 
 export type EligibleChampionship = {
   id: number;
@@ -77,8 +78,35 @@ export function proposeCapsuleForChampionship(
 }
 
 export type ActivationGateResult =
-  | { ok: true }
-  | { ok: false; reason: string; backtest?: ReplayFitnessResult };
+  | { ok: true; council?: ProofCouncilResult }
+  | { ok: false; reason: string; backtest?: ReplayFitnessResult; council?: ProofCouncilResult };
+
+/**
+ * Proof-Council verdict over a capsule's pre-flight replay. A single-window replay can't
+ * prove an "edge" (no walk-forward/PBO/DSR), so it is judged on the PENNY-LOCK axis —
+ * net-positive realized ROI + an adequate trade count + a drawdown within ceiling. The
+ * win-floor is opened up (win rate is informational, not a hard bar — many real edges win
+ * < 50% with fat winners); the deploy blockers are net-negative PnL, too-few trades, and a
+ * blown drawdown. Pure (no DB/env) → unit-testable.
+ */
+export function capsulePreflightCouncil(
+  bt: ReplayFitnessResult,
+  opts: { label?: string; minTrades?: number; ddCeil?: number; winFloor?: number } = {},
+): ProofCouncilResult {
+  return proofCouncil(
+    {
+      label: opts.label ?? "capsule", objective: "penny_lock", sampleUnit: "trades", feeBps: 0,
+      bars: bt.trades_count, nTrades: bt.trades_count,
+      winRate: bt.win_rate, netRoiPct: bt.pnl_pct * 100, maxDdPct: bt.max_dd_pct,
+    },
+    {
+      ...DEFAULT_PROOF_THRESHOLDS,
+      pennyMinTrades: opts.minTrades ?? 20,
+      pennyWinFloor: opts.winFloor ?? 0,   // win rate is informational here, not a hard floor
+      ddCeil: opts.ddCeil ?? 0.25,
+    },
+  );
+}
 
 /**
  * Pre-flight backtest gate. Runs the bound paper_agent's genome over the
@@ -98,6 +126,7 @@ export function activateCapsule(
   // Look up bound paper_agent for the gate.
   const binding = db().prepare(`SELECT paper_agent_id FROM capsules WHERE id = ?`).get(capsuleId) as { paper_agent_id: number | null } | undefined;
   const paperAgentId = binding?.paper_agent_id ?? null;
+  let council: ProofCouncilResult | undefined;
 
   if (!opts.bypass && paperAgentId != null) {
     const agent = getPaperAgent(paperAgentId);
@@ -126,10 +155,25 @@ export function activateCapsule(
           });
           return { ok: false, reason: `pre-flight backtest drawdown ${(bt.max_dd_pct * 100).toFixed(2)}% above ceiling ${(maxDdPct * 100).toFixed(2)}%`, backtest: bt };
         }
+        // Opt-in Proof Council gate (ARENA_ACTIVATE_PROOF_COUNCIL=1): no capsule goes live
+        // without an ADVOCATE_APPROVED verdict over the pre-flight replay (penny-lock axis:
+        // net-positive + adequate trades + drawdown within ceiling). Off by default → the
+        // legacy pnl/dd thresholds above are the only gate.
+        if (process.env.ARENA_ACTIVATE_PROOF_COUNCIL === "1") {
+          council = capsulePreflightCouncil(bt, { label: capsuleId.slice(0, 8), ddCeil: maxDdPct });
+          if (council.verdict !== "ADVOCATE_APPROVED") {
+            insertEvolutionEvent({
+              event_type: "capsule-activation-blocked",
+              summary: `Capsule ${capsuleId.slice(0, 8)} BLOCKED by Proof Council (${council.verdict}): ${council.skeptic[0] ?? ""}`,
+              payload_json: JSON.stringify({ capsule_id: capsuleId, council, backtest: bt }),
+            });
+            return { ok: false, reason: `proof council ${council.verdict} — ${council.skeptic[0] ?? council.action}`, backtest: bt, council };
+          }
+        }
         insertEvolutionEvent({
           event_type: "capsule-activation-gate-passed",
-          summary: `Capsule ${capsuleId.slice(0, 8)} pre-flight OK: pnl=${(bt.pnl_pct * 100).toFixed(2)}%, dd=${(bt.max_dd_pct * 100).toFixed(2)}%, ${bt.trades_count} trades`,
-          payload_json: JSON.stringify({ capsule_id: capsuleId, backtest: bt }),
+          summary: `Capsule ${capsuleId.slice(0, 8)} pre-flight OK: pnl=${(bt.pnl_pct * 100).toFixed(2)}%, dd=${(bt.max_dd_pct * 100).toFixed(2)}%, ${bt.trades_count} trades${council ? ` · council ${council.verdict}` : ""}`,
+          payload_json: JSON.stringify({ capsule_id: capsuleId, backtest: bt, council }),
         });
       } catch (err) {
         return { ok: false, reason: `pre-flight backtest crashed: ${(err as Error).message}` };
@@ -144,7 +188,7 @@ export function activateCapsule(
     summary: `Capsule ${capsuleId.slice(0, 8)} activated to LIVE by ${activatedBy}${opts.bypass ? " (BYPASS gate)" : ""}`,
     payload_json: JSON.stringify({ capsule_id: capsuleId, activated_by: activatedBy, bypass: !!opts.bypass }),
   });
-  return { ok: true };
+  return { ok: true, council };
 }
 
 export function rejectChampionship(championshipId: number, reason: string): void {

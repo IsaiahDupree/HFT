@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { L2Backtester, type MarketEvent, type Strategy } from "@/lib/backtest/l2/engine";
-import { asMmStrategy, doNothingStrategy } from "@/lib/backtest/l2/strategies";
+import { asMmStrategy, asMmDollar, doNothingStrategy } from "@/lib/backtest/l2/strategies";
 import { generateSyntheticEvents } from "@/lib/backtest/l2/synthetic";
 
 /** Strategy that places ONE order on the first book event, then never again. */
@@ -63,5 +63,32 @@ describe("L2 backtester mechanics", () => {
       .run(generateSyntheticEvents({ n: 1500, seed: 7, spread: 0.03, tradeProb: 0.45 }), asMmStrategy({ gamma: 1, sigma: 0.05, kappa: 80, T: 1 }, { size: 20 }));
     expect(s.nFills).toBeGreaterThan(0);
     expect(Number.isFinite(s.pnl)).toBe(true);
+  });
+});
+
+describe("asMmDollar + flat-bps fees (continuous venues / dYdX)", () => {
+  it("quotes around mid in DOLLAR space (no 0/1 clamp) and skews against inventory", () => {
+    const placed: Array<{ side: string; price: number }> = [];
+    const mockBt: any = { book: { bidPx: 99, bidSz: 1, askPx: 101, askSz: 1 }, inventory: 0, tick: 1, cancel: () => {}, placeLimit: (_t: number, side: string, price: number) => { placed.push({ side, price }); return 1; } };
+    const strat = asMmDollar({ size: 0.01, baseSpreadBps: 1, maxNotional: 10_000 });
+    strat(mockBt, { ts: 0, kind: "book" } as MarketEvent);
+    const bid = placed.find((p) => p.side === "bid")!, ask = placed.find((p) => p.side === "ask")!;
+    expect(bid.price).toBeGreaterThan(50); expect(bid.price).toBeLessThan(100);   // dollar-range, NOT clamped to ~1
+    expect(ask.price).toBeGreaterThan(100); expect(ask.price).toBeLessThan(150);
+    placed.length = 0; mockBt.inventory = 50;                                       // long → reservation skews DOWN
+    strat(mockBt, { ts: 1, kind: "book" } as MarketEvent);
+    const bid2 = placed.find((p) => p.side === "bid");
+    expect(bid2 === undefined || bid2.price < bid.price).toBe(true);
+  });
+
+  it("feeBps mode pays a flat-bps maker rebate (negative bps) instead of the binary curve", () => {
+    const events: MarketEvent[] = [
+      { ts: 0, kind: "book", bidPx: 100, bidSz: 0, askPx: 101, askSz: 0 }, // queueAhead 0 at our bid
+      { ts: 1, kind: "trade", price: 100, size: 50, aggressor: "SELL" },   // sells into the bid → maker fill
+    ];
+    const s = new L2Backtester({ latencyMs: 0, tick: 1, feeBps: { maker: -1, taker: 5 } }).run(events, placeOnce("bid", 100, 50));
+    expect(s.nMakerFills).toBeGreaterThan(0);
+    const filledQty = s.fills.filter((f) => f.isMaker).reduce((a, f) => a + f.qty, 0);
+    expect(s.rebatesReceived).toBeCloseTo((1 / 1e4) * 100 * filledQty, 6); // -1bps maker = +rebate on $100 notional × qty
   });
 });

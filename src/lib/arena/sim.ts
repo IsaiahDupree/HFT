@@ -39,6 +39,7 @@ import type {
 import { runDecisionPipeline } from "@/lib/decision/pipeline";
 import { recordDecision } from "@/lib/decision/journal";
 import { activeRegimeFitTable } from "@/lib/decision/regime-fit-table";
+import { snapshotFromWindow } from "./context";
 import type { DecisionContext } from "@/lib/decision/types";
 
 const CB_TAKER_FEE_BPS = 25;
@@ -58,21 +59,9 @@ function shadowGateEntry(agentId: number, kind: string, venue: string, marketId:
   if (process.env.ARENA_SHADOW_GATES !== "1") return null;
   try {
     // Calibration v2: pass the REAL market context the sim already holds so the
-    // regime/data-quality/edge gates score actual conditions, not a {midPrice}
-    // stub. `win.history` (oldest→newest) feeds the regime classifier; bid/ask
-    // feed data-quality + spread sanity. (No L2 book in the arena sim → no
-    // orderBook/slippage; that arrives with the dYdX/L2 path.)
-    const snapshot: DecisionContext["snapshot"] = win
-      ? {
-          midPrice: price,
-          bestBid: win.latest.bid,
-          bestAsk: win.latest.ask,
-          ticks: win.history.slice(-100).map((s) => {
-            const t = Date.parse(s.captured_at);
-            return { ts: Number.isFinite(t) ? Math.floor(t / 1000) : 0, price: s.price };
-          }),
-        }
-      : { midPrice: price };
+    // regime/data-quality/edge gates score actual conditions, not a {midPrice} stub.
+    // Same shared mapper the live-capsule path uses → train/serve parity (F2).
+    const snapshot: DecisionContext["snapshot"] = win ? snapshotFromWindow(win, price) : { midPrice: price };
     const ctx: DecisionContext = {
       agentId,
       capsuleId: `sim-agent-${agentId}`,

@@ -24,6 +24,7 @@ import { loadMetaModel } from "@/lib/decision/meta-label-store";
 import { activeRegimeFitTable } from "@/lib/decision/regime-fit-table";
 import type { MetaLabelSizing } from "@/lib/decision/meta-label";
 import type { DecisionContext } from "@/lib/decision/types";
+import { buildLiveTickContext, snapshotFromWindow } from "./context";
 import type { Position, Signal } from "./types";
 
 // Meta-label sizing (trim-only) is opt-in via META_LABEL_SIZING=1 + a trained
@@ -254,6 +255,17 @@ export async function routeArenaSignal(
   const pipelineEnabled = process.env.DECISION_PIPELINE_ENABLED === "1";
   if (pipelineShadow || pipelineEnabled) {
     try {
+      // F2 fix: feed a REAL snapshot from the order's market window so the regime gate
+      // classifies an ACTUAL regime (not 'unknown') and the meta-labeler sees in-
+      // distribution features. Uses the SAME `snapshotFromWindow` mapper the sim shadow
+      // path uses → train/serve parity. Best-effort: a market with no recent snapshots
+      // falls back to undefined (→ regime 'unknown' → meta-label no-op, the prior safe
+      // behavior), so this never blocks or changes a trade when data is missing.
+      let liveSnapshot: DecisionContext["snapshot"];
+      try {
+        const win = buildLiveTickContext({ historyDays: 2, enrichCrossVenue: false }).snapshots.get(order.symbol);
+        if (win) liveSnapshot = snapshotFromWindow(win, order.refPrice);
+      } catch { /* snapshot build is best-effort */ }
       const decisionCtx: DecisionContext = {
         agentId,
         capsuleId: capsule.id,
@@ -267,10 +279,7 @@ export async function routeArenaSignal(
           conditionId: order.symbol,
           metadata: order.metadata,
         },
-        snapshot: undefined, // no snapshot at this layer in v1; regime gate returns 'unknown' (static 0.7).
-                             // NOTE: with regime='unknown', the regime-fit table never overrides (static rail)
-                             // AND meta-label sizing fail-safes to a no-op (OOD vs the trained regimes). To
-                             // actually use the learned layers live, v2 must feed a real snapshot here.
+        snapshot: liveSnapshot,
         ts: new Date().toISOString(),
       };
       const decisionResult = runDecisionPipeline(decisionCtx, { metaLabel: metaLabelSizing(), regimeFitTable: activeRegimeFitTable() });

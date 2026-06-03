@@ -11,8 +11,28 @@ import { db } from "@/lib/db/client";
 import { enrichContextWithCrossVenue } from "./cross-venue";
 import { latestRealtimeTicks } from "./realtime-ticks";
 import type { Snapshot, SnapshotWindow, TickContext, Venue } from "./types";
+import type { DecisionContext } from "@/lib/decision/types";
 
 const DEFAULT_HISTORY_DAYS = 7;
+
+/**
+ * Build the decision-pipeline snapshot from a per-market SnapshotWindow — the SHARED
+ * mapper used by BOTH the sim shadow-gate and the live-capsule path, so their regime /
+ * data-quality / edge features are derived from IDENTICAL code (train/serve parity; the
+ * fix for the F2 finding). `win.history` (oldest→newest) feeds the regime classifier;
+ * `win.latest` bid/ask feed the spread / data-quality gates.
+ */
+export function snapshotFromWindow(win: SnapshotWindow, midPrice: number): NonNullable<DecisionContext["snapshot"]> {
+  return {
+    midPrice,
+    bestBid: win.latest.bid,
+    bestAsk: win.latest.ask,
+    ticks: win.history.slice(-100).map((s) => {
+      const t = Date.parse(s.captured_at);
+      return { ts: Number.isFinite(t) ? Math.floor(t / 1000) : 0, price: s.price };
+    }),
+  };
+}
 
 function isoMinus(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString();

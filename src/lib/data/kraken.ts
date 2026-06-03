@@ -15,9 +15,12 @@ export const KRAKEN_INTERVAL_MIN: Record<string, number> = {
 };
 
 export function krakenInterval(granularity: string): number {
-  const v = KRAKEN_INTERVAL_MIN[granularity];
-  if (v == null) throw new Error(`kraken: unsupported granularity ${granularity}`);
-  return v;
+  // Object.hasOwn (not `[granularity]` + null-check) so inherited keys like "toString" /
+  // "constructor" reject cleanly instead of resolving to an Object.prototype member.
+  if (!Object.hasOwn(KRAKEN_INTERVAL_MIN, granularity)) {
+    throw new Error(`kraken: unsupported granularity ${granularity}`);
+  }
+  return KRAKEN_INTERVAL_MIN[granularity];
 }
 
 // Kraken uses legacy asset codes for a few bases (XBT=Bitcoin, XDG=Dogecoin).

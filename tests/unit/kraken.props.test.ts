@@ -88,18 +88,12 @@ describe("krakenInterval — properties", () => {
     expect(() => krakenInterval("")).toThrow();
   });
 
-  it("never returns a documented interval for inherited Object.prototype keys", () => {
-    // NOTE: documents CURRENT behavior. The lookup uses a plain object, so an inherited key like
-    // "toString" resolves to Object.prototype.toString (a function, not null) and the `v == null`
-    // guard does NOT trip — so it does NOT throw and returns a non-number. We assert it never
-    // produces a *valid* Kraken interval, which is the property that actually matters downstream.
-    const DOCUMENTED = new Set([1, 5, 15, 30, 60, 240, 1440, 10080, 21600]);
+  it("throws on inherited Object.prototype keys (hardened with Object.hasOwn)", () => {
+    // Inherited keys like "toString"/"constructor" must NOT resolve to a prototype member —
+    // krakenInterval uses Object.hasOwn so they reject exactly like any absent key.
     for (const k of ["toString", "constructor", "hasOwnProperty", "valueOf"]) {
-      const v = krakenInterval(k);
-      expect(typeof v).not.toBe("number");
-      expect(DOCUMENTED.has(v as unknown as number)).toBe(false);
+      expect(() => krakenInterval(k)).toThrow(/unsupported granularity/);
     }
-    // A genuinely-absent own key still throws as designed.
     expect(() => krakenInterval("DEFINITELY_NOT_A_KEY")).toThrow();
   });
 

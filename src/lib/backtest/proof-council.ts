@@ -17,11 +17,26 @@
 
 export type StrategyEvidence = {
   label: string;
+  /**
+   * What the strategy is TRYING to do, so it is judged on the right axis:
+   *   "edge"       — ROI-max / convexity: "how much can we make?" → Sharpe → walk-forward
+   *                  → PBO → Deflated-Sharpe (the default).
+   *   "penny_lock" — high-confidence certainty: "can we keep winning and still be net
+   *                  positive?" → win rate + Wilson CI-low + net-positive, NOT ROI size.
+   *                  A $2→$2.01 trade should not be judged against convexity strategies.
+   */
+  objective?: "edge" | "penny_lock";
   /** Sample length; unit named by `sampleUnit` (default "bars"). */
   bars: number;
   sampleUnit?: string;
   /** Fee assumption the PnL is net of (bps). */
   feeBps: number;
+  // ── penny-lock evidence ──
+  /** Realized net ROI %, net of fees (can be tiny — that is the point). */
+  netRoiPct?: number;
+  /** Average win / average loss per trade (% magnitudes) → the break-even win rate. */
+  avgWinPct?: number;
+  avgLossPct?: number;
   /** Walk-forward out-of-sample annualized Sharpe. */
   oosSharpeAnn?: number;
   fullSharpeAnn?: number;
@@ -49,9 +64,14 @@ export type ProofCouncilResult = { verdict: ProofVerdict; action: string; advoca
 export type ProofThresholds = {
   minBars: number; pboHard: number; pboClean: number; dsrClean: number;
   minRegimes: number; minOosHoldFrac: number;
+  // penny-lock objective
+  pennyMinTrades: number;  // min trades to establish a high win rate
+  pennyWinFloor: number;   // CI-low floor when no payoff given (high-confidence assumption)
+  pennyMargin: number;     // required CI-low margin over break-even for approval
 };
 export const DEFAULT_PROOF_THRESHOLDS: ProofThresholds = {
   minBars: 60, pboHard: 0.5, pboClean: 0.3, dsrClean: 0.95, minRegimes: 2, minOosHoldFrac: 0.5,
+  pennyMinTrades: 100, pennyWinFloor: 0.9, pennyMargin: 0.02,
 };
 
 /** Wilson score lower bound for a binomial win rate (z = 1.96 ≈ 95%). Pure. */
@@ -76,6 +96,7 @@ export function renderProofCouncil(r: ProofCouncilResult): string {
 }
 
 export function proofCouncil(ev: StrategyEvidence, thr: ProofThresholds = DEFAULT_PROOF_THRESHOLDS): ProofCouncilResult {
+  if (ev.objective === "penny_lock") return pennyLockCouncil(ev, thr);
   const unit = ev.sampleUnit ?? "bars";
   const holdFrac = ev.variants && ev.variants > 0 ? (ev.oosHold ?? 0) / ev.variants : undefined;
 
@@ -124,4 +145,53 @@ export function proofCouncil(ev: StrategyEvidence, thr: ProofThresholds = DEFAUL
     };
   }
   return { verdict: "PROVE_IT", action: "keep in research — close the gap(s) below before promotion", advocate, skeptic: gaps };
+}
+
+/**
+ * Penny-Lock Certainty — judge a high-confidence, tiny-edge strategy on ITS OWN objective:
+ * "can we keep winning AND stay net positive?" A $2→$2.01 trade is evaluated on win rate
+ * (Wilson CI-low) clearing its break-even + a positive realized net ROI — NOT on ROI size.
+ * The skeptic guards the real risk: the left-tail asymmetry (small wins, occasional big
+ * loss) → require the CI-low win rate comfortably above break-even.
+ */
+function pennyLockCouncil(ev: StrategyEvidence, thr: ProofThresholds): ProofCouncilResult {
+  const unit = ev.sampleUnit ?? "trades";
+  const n = ev.nTrades ?? 0;
+  const wr = Math.max(0, Math.min(1, ev.winRate ?? 0));
+  const ciLow = wilsonLowerBound(Math.round(wr * n), n);
+  // break-even win rate from the payoff asymmetry (avgLoss / (avgWin + avgLoss)), if given;
+  // else assume a high-confidence win floor (you didn't tell me the payoff).
+  const breakEven = (ev.avgWinPct != null && ev.avgLossPct != null && ev.avgWinPct + ev.avgLossPct > 0)
+    ? ev.avgLossPct / (ev.avgWinPct + ev.avgLossPct) : undefined;
+  const winBar = breakEven ?? thr.pennyWinFloor;
+  const barName = breakEven != null ? "break-even" : `${(thr.pennyWinFloor * 100).toFixed(0)}% win floor`;
+
+  // advocate — penny-lock framing: keep winning + net positive (NOT how much)
+  const advocate: string[] = [];
+  if (ev.netRoiPct != null && ev.netRoiPct > 0) advocate.push(`net ROI ${pct(ev.netRoiPct)} on ${n} ${unit} — net positive even if tiny (the penny-lock objective)`);
+  if (n > 0) advocate.push(`win ${(wr * 100).toFixed(1)}% on ${n} ${unit}, Wilson CI-low ${(ciLow * 100).toFixed(1)}%`);
+  if (breakEven != null) advocate.push(`CI-low ${(ciLow * 100).toFixed(1)}% clears the ${(breakEven * 100).toFixed(1)}% break-even for a +${ev.avgWinPct}%/−${ev.avgLossPct}% payoff`);
+
+  // blockers (→ REPAIR_FIRST): fails the penny-lock objective itself
+  const blockers: string[] = [];
+  if (n < thr.pennyMinTrades) blockers.push(`sample only ${n} ${unit} (< ${thr.pennyMinTrades}) — a high win rate is not yet established`);
+  if (ev.netRoiPct != null && ev.netRoiPct <= 0) blockers.push(`net ROI ${pct(ev.netRoiPct)} ≤ 0 — a penny-lock that isn't net positive fails its own objective`);
+  if (n >= thr.pennyMinTrades && ciLow <= winBar) blockers.push(`Wilson CI-low ${(ciLow * 100).toFixed(1)}% not above the ${(winBar * 100).toFixed(1)}% ${barName} — not provably a repeatable win`);
+  if (blockers.length) return { verdict: "REPAIR_FIRST", action: "do NOT deploy — the penny-lock objective (keep winning + stay net positive) is not met", advocate, skeptic: blockers };
+
+  // gaps (→ PROVE_IT)
+  const gaps: string[] = [];
+  if (ev.netRoiPct == null) gaps.push("net ROI not measured — net-positive (the objective) not yet confirmed");
+  if (breakEven != null && ciLow - breakEven < thr.pennyMargin) {
+    gaps.push(`CI-low margin over break-even is only ${((ciLow - breakEven) * 100).toFixed(1)} pts — a small win-rate decay flips it negative; widen the sample`);
+  }
+  if (gaps.length) return { verdict: "PROVE_IT", action: "keep in research — confirm the win rate holds (tighter CI / payoff) before promotion", advocate, skeptic: gaps };
+
+  const note = breakEven == null ? ` (payoff not given → assumed the ${(thr.pennyWinFloor * 100).toFixed(0)}% floor)` : "";
+  return {
+    verdict: "ADVOCATE_APPROVED",
+    action: "promote as a high-confidence penny-lock candidate — TIGHT stake caps + a left-tail kill (wins are small; one fat loss erases many)",
+    advocate,
+    skeptic: [`no audit blockers${note}; next proof is forward live-smoke continuation — watch for win-rate decay below ${(winBar * 100).toFixed(1)}%`],
+  };
 }

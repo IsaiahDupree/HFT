@@ -118,3 +118,65 @@ describe("proof-council — rendering + determinism", () => {
     expect(proofCouncil(HARDENED(), strict).verdict).toBe("PROVE_IT"); // dsr 0.98 < 0.99 now a gap
   });
 });
+
+describe("proof-council — penny-lock certainty objective", () => {
+  it("a TINY positive ROI still gets a YES when the win rate is high enough", () => {
+    const r = proofCouncil({ label: "penny", objective: "penny_lock", bars: 252, sampleUnit: "trades", feeBps: 0, nTrades: 252, winRate: 0.972, netRoiPct: 1.3 });
+    expect(r.verdict).toBe("ADVOCATE_APPROVED");
+    expect(r.action).toMatch(/penny-lock candidate.*left-tail kill/i);
+    expect(r.advocate.some((a) => /net ROI \+1\.3%.*net positive even if tiny/.test(a))).toBe(true);
+    expect(r.advocate.some((a) => /win 97\.2% on 252 trades, Wilson CI-low 9\d\.\d%/.test(a))).toBe(true);
+    expect(r.skeptic[0]).toMatch(/watch for win-rate decay/i);
+  });
+
+  it("the OBJECTIVE changes the verdict: the same tiny-ROI evidence is PROVE_IT under 'edge' but APPROVED under 'penny_lock'", () => {
+    const base = { label: "x", bars: 252, sampleUnit: "trades", feeBps: 0, nTrades: 252, winRate: 0.972, netRoiPct: 1.3 } as const;
+    expect(proofCouncil({ ...base, objective: "edge" }).verdict).toBe("PROVE_IT");          // no Sharpe/PBO/DSR → unproven as an "edge"
+    expect(proofCouncil({ ...base, objective: "penny_lock" }).verdict).toBe("ADVOCATE_APPROVED");
+  });
+
+  it("with a payoff, it judges the CI-low against the BREAK-EVEN win rate", () => {
+    // payoff +1%/−1% → break-even 50%; win 80% on 300 → CI-low well above 50%
+    const r = proofCouncil({ label: "p", objective: "penny_lock", bars: 300, feeBps: 0, nTrades: 300, winRate: 0.8, netRoiPct: 0.6, avgWinPct: 1, avgLossPct: 1 });
+    expect(r.verdict).toBe("ADVOCATE_APPROVED");
+    expect(r.advocate.some((a) => /clears the 50\.0% break-even for a \+1%\/−1% payoff/.test(a))).toBe(true);
+  });
+
+  it("REPAIR_FIRST when the realized ROI is not net positive (fails its own objective)", () => {
+    const r = proofCouncil({ label: "p", objective: "penny_lock", bars: 300, feeBps: 0, nTrades: 300, winRate: 0.95, netRoiPct: -0.4 });
+    expect(r.verdict).toBe("REPAIR_FIRST");
+    expect(r.skeptic.some((s) => /fails its own objective/.test(s))).toBe(true);
+  });
+
+  it("REPAIR_FIRST when the win-rate CI-low can't clear break-even (realized + could be luck)", () => {
+    // payoff +0.5%/−1% → break-even ~66.7%; win 55% → CI-low far below → not provably repeatable
+    const r = proofCouncil({ label: "p", objective: "penny_lock", bars: 300, feeBps: 0, nTrades: 300, winRate: 0.55, netRoiPct: 0.1, avgWinPct: 0.5, avgLossPct: 1 });
+    expect(r.verdict).toBe("REPAIR_FIRST");
+    expect(r.skeptic.some((s) => /not above the 66\.7% break-even/.test(s))).toBe(true);
+  });
+
+  it("REPAIR_FIRST on too few trades (a high win rate isn't established yet)", () => {
+    const r = proofCouncil({ label: "p", objective: "penny_lock", bars: 20, sampleUnit: "trades", feeBps: 0, nTrades: 20, winRate: 1.0, netRoiPct: 2 });
+    expect(r.verdict).toBe("REPAIR_FIRST");
+    expect(r.skeptic.some((s) => /sample only 20 trades/.test(s))).toBe(true);
+  });
+
+  it("PROVE_IT when net positive + above break-even but the CI-low margin is razor-thin", () => {
+    // payoff 1/1 → break-even 50%; win 54% on 2000 → CI-low ≈ 51.8% → margin < 2pts
+    const r = proofCouncil({ label: "p", objective: "penny_lock", bars: 2000, feeBps: 0, nTrades: 2000, winRate: 0.54, netRoiPct: 0.2, avgWinPct: 1, avgLossPct: 1 });
+    expect(r.verdict).toBe("PROVE_IT");
+    expect(r.skeptic.some((s) => /margin over break-even is only.*pts/.test(s))).toBe(true);
+  });
+
+  it("PROVE_IT when net ROI was never measured (can't confirm the objective)", () => {
+    const r = proofCouncil({ label: "p", objective: "penny_lock", bars: 252, sampleUnit: "trades", feeBps: 0, nTrades: 252, winRate: 0.97 });
+    expect(r.verdict).toBe("PROVE_IT");
+    expect(r.skeptic.some((s) => /net ROI not measured/.test(s))).toBe(true);
+  });
+
+  it("renders + is deterministic for the penny-lock path", () => {
+    const ev = { label: "p", objective: "penny_lock" as const, bars: 252, feeBps: 0, nTrades: 252, winRate: 0.972, netRoiPct: 1.3 };
+    expect(renderProofCouncil(proofCouncil(ev))).toMatch(/^PROOF COUNCIL: ADVOCATE_APPROVED/);
+    expect(proofCouncil(ev)).toEqual(proofCouncil(ev));
+  });
+});

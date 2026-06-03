@@ -111,14 +111,19 @@ export class SignalEngine {
  * slope, R², residual std. R² > 0.2 in-sample is a LEAK warning, not a win —
  * the OFI→price relationship is genuinely weak per-event (handbook §8.5).
  */
-export function calibrateOfiAlpha(events: MarketEvent[], opts: { horizonSec?: number; ofiWindowSec?: number } = {}): { alphaBeta: number; r2: number; residualStd: number; n: number } {
+export function calibrateOfiAlpha(events: MarketEvent[], opts: { horizonSec?: number; ofiWindowSec?: number; space?: "logit" | "logprice" } = {}): { alphaBeta: number; r2: number; residualStd: number; n: number } {
   const h = opts.horizonSec ?? 1.0;
+  const space = opts.space ?? "logit"; // "logit" for Polymarket binaries (0,1); "logprice" for continuous venues (dYdX/Coinbase $)
   const ofiCalc = new OFICalculator(opts.ofiWindowSec ?? 1.0);
   const rows: Array<{ ts: number; x: number; ofi: number }> = [];
   for (const ev of events) {
     if (ev.kind !== "book") continue;
-    const mp = Math.min(1 - 1e-6, Math.max(1e-6, microprice(ev.bidPx, ev.bidSz, ev.askPx, ev.askSz)));
-    const x = Math.log(mp / (1 - mp));
+    const mpRaw = microprice(ev.bidPx, ev.bidSz, ev.askPx, ev.askSz);
+    // logit space assumes p∈(0,1) (binaries); logprice handles dollar prices without
+    // the (0,1) clamp that would otherwise pin every x to ~log(1/1e-6) → Δx=0.
+    const x = space === "logprice"
+      ? Math.log(Math.max(1e-12, mpRaw))
+      : Math.log(Math.min(1 - 1e-6, Math.max(1e-6, mpRaw)) / (1 - Math.min(1 - 1e-6, Math.max(1e-6, mpRaw))));
     const ofi = ofiCalc.update(ev.ts, ev.bidPx, ev.bidSz, ev.askPx, ev.askSz);
     rows.push({ ts: ev.ts, x, ofi });
   }

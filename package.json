@@ -114,7 +114,14 @@
     "tsdb:init": "tsx scripts/tsdb-init.ts",
     "tsdb:migrate": "tsx scripts/tsdb-migrate.ts",
     "tsdb:policies": "tsx scripts/tsdb-policies.ts",
-    "calibration:report": "tsx scripts/calibration-report.ts"
+    "calibration:report": "tsx scripts/calibration-report.ts",
+    "capture:dydx": "tsx scripts/capture-l2-dydx.ts",
+    "record:dydx": "tsx scripts/record-l2-dydx.ts",
+    "backtest:dydx:mm": "tsx scripts/backtest-dydx-mm.ts",
+    "backtest:xsection": "tsx scripts/backtest-xsection.ts",
+    "backtest:pairs": "tsx scripts/backtest-pairs.ts",
+    "meta:allocate": "tsx scripts/meta-allocate.ts",
+    "load:binance": "tsx scripts/load-binance-history.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

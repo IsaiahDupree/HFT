@@ -78,6 +78,9 @@ export class L2Backtester {
   readonly latencyMs: number;
   readonly feeCategory: FeeCategory;
   readonly tick: number;
+  /** Flat per-notional fees (bps) for CONTINUOUS venues (dYdX/Coinbase $). When
+   *  set, overrides the Polymarket V2 binary fee curve. Negative maker = rebate. */
+  readonly feeBps?: { maker: number; taker: number };
   book = { bidPx: 0, bidSz: 0, askPx: 1, askSz: 0 };
   orders = new Map<number, RestingOrder>();
   nextOrderId = 1;
@@ -89,10 +92,11 @@ export class L2Backtester {
   private heap = new MinHeap();
   private seq = 0;
 
-  constructor(opts: { latencyMs?: number; feeCategory?: FeeCategory; tick?: number } = {}) {
+  constructor(opts: { latencyMs?: number; feeCategory?: FeeCategory; tick?: number; feeBps?: { maker: number; taker: number } } = {}) {
     this.latencyMs = opts.latencyMs ?? 50;
     this.feeCategory = opts.feeCategory ?? "geopolitics"; // default fee-free
     this.tick = opts.tick ?? 0.001;
+    this.feeBps = opts.feeBps;
   }
 
   mid(): number { return (this.book.bidPx + this.book.askPx) / 2; }
@@ -149,11 +153,12 @@ export class L2Backtester {
     const sign = order.side === "bid" ? 1 : -1; // bid fill → long, ask fill → short
     const notional = qty * order.price;
     if (isMaker) {
-      const rebate = makerRebate(order.price, qty, this.feeCategory);
+      // flat-bps (continuous venues): negative maker bps = rebate; else binary curve.
+      const rebate = this.feeBps ? -this.feeBps.maker / 1e4 * notional : makerRebate(order.price, qty, this.feeCategory);
       this.rebatesReceived += rebate;
       this.cash += -sign * notional + rebate;
     } else {
-      const fee = takerFee(order.price, qty, this.feeCategory);
+      const fee = this.feeBps ? this.feeBps.taker / 1e4 * notional : takerFee(order.price, qty, this.feeCategory);
       this.feesPaid += fee;
       this.cash += -sign * notional - fee;
     }

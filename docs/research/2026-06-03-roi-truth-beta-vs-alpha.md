@@ -126,6 +126,60 @@ truth the advocate exists to tell.
 
 ---
 
+## 5. "Is there a REGIME with alpha?" — and the warehouse splice it uncovered
+
+The honest follow-up: unconditional strategies are beta, so does a strategy beat buy-and-hold *inside a
+regime*? `src/lib/backtest/candle/regime.ts` labels each bar (vol / trend / breadth, all no-lookahead,
+self-calibrating) and `regimeConditionalAlpha` computes excess-over-beta OOS per regime;
+`npm run analyze:regime` scans the strategy × regime grid.
+
+**The multiple-testing trap, made concrete.** Scanning 195 cells, **66 "beat beta OOS"** by ≥0.3 excess
+Sharpe — but that ignores sample size + search width. With a one-sided **Bonferroni** bar (t > 3.47 over
+195 tests; best observed t ≈ 2.2), **0/195 survive**. The 66 were a multiple-testing illusion. The tool
+now prints this verdict directly (`multipleTestingReport`), not the misleading lead count.
+
+**A "defensive / crisis-alpha" pattern appeared — and adversarial verification destroyed it.** 20 cells
+showed the strategy positive while buy-and-hold was negative (low-vol/bear), the trend-following
+go-to-cash signature. An 8-agent verification workflow (3 independent verifiers + 3 refute-by-default
+skeptics) found:
+
+- **Direct pre-registered test** (`scripts/trend-defensive-test.ts`, `npm run test:trend-defensive`):
+  the trend portfolio is a **~0.8× beta clone**, not a diversifier — corr(trend, beta) **0.81–0.83**,
+  down-capture ≈ up-capture (convexity gap **−0.02**), mean return on down-beta days **−1.9…−2.3%**
+  (t −18…−21). It *never* makes money when the market falls. **REFUTED.**
+- **Permutation null:** a 200× time-shuffle (destroys any real regime→return link) yields *more*
+  defensive cells (18.9) than the real definitions (11.4), median p = 0.985 — the pattern is a
+  descriptive arithmetic coincidence, not a regime effect.
+- **The root cause — a DATA SPLICE.** Three skeptics independently found the warehouse is two ingests
+  glued together: **12 Coinbase `-USD` symbols** (full history → 2026) and **66 Binance `USDT` symbols
+  that all die 2024-12-31**. The OOS window crosses that date, so the equal-weight buy-and-hold benchmark
+  **loses 85% of its names mid-sample** (active count collapses 78 → 12 on 2025-01-01).
+
+**The fix** (`src/lib/backtest/candle/universe.ts`): cohort selection (`restrictToConvention`, `aliveAtEnd`)
++ a **splice detector** (`universeHealth` flags the largest one-day active-coin drop). Both analysis
+scripts take `--universe all|usd|usdt|alive` and auto-print a `⚠ SPLICE` warning.
+
+Re-running on clean single-source cohorts:
+
+| Universe | relstr verdict | regime defensive cells | Bonferroni survivors |
+|---|---|---|---|
+| `all` (spliced) | JUST_HOLD (OOS excess vs spliced beta) | 20 | 0 / 195 |
+| `usd` (12 coins, clean) | **JUST_HOLD — OOS excess Sharpe −0.00, pure beta** | **1** | 0 / 195 |
+| `usdt` (66 coins, 2021-24) | **NO_TRADE — artifact_risk, DSR 0.74** | 23 | 0 / 135 |
+
+The "20 defensive cells" collapse to **1** on the clean USD universe — ~95% of the finding was a splice
+artifact. **No regime-conditional alpha survives multiple-testing on any clean cohort.**
+
+**What this thread actually delivered:** the "next progress is data/regime" turned out to mean *the data
+was broken*. Adversarial verification caught a warehouse splice that was inflating the relstr audit and
+manufacturing a fake "defensive sleeve." The honest, corrected verdict is stronger than before — on clean
+current data (`usd`), relstr is pure beta with **zero** out-of-sample alpha — and backtests now detect and
+refuse the splice automatically. The lesson that started this (big ROI ≠ edge) now has a companion:
+**a "regime edge" found by scanning is a hypothesis count, not a result — correct for it, and verify the
+data underneath it before believing anything.**
+
+---
+
 ## Files / commands
 
 | Path | What |
@@ -133,7 +187,11 @@ truth the advocate exists to tell.
 | `src/lib/backtest/trade-advocate.ts` | `tradeAdvocate` + `renderTradeAdvice` |
 | `src/lib/backtest/candle/cross-asset.ts` | `equalWeightBuyHoldReturns` (beta benchmark) |
 | `src/lib/data/{venue-candles,kraken,cross-venue}.ts` | multi-venue data + artifact detector |
-| `npm run backtest:relstr` | relstr gauntlet + Proof Council + Trade Advocate |
+| `src/lib/backtest/candle/regime.ts` | regime labels + `regimeConditionalAlpha` + `multipleTestingReport` (Bonferroni) |
+| `src/lib/backtest/candle/universe.ts` | cohort selection + splice detector (`universeHealth`) |
+| `npm run backtest:relstr -- --universe usd` | relstr gauntlet + Proof Council + Trade Advocate (clean cohort) |
+| `npm run analyze:regime -- --universe usd` | regime-conditional alpha scan + Bonferroni verdict |
+| `npm run test:trend-defensive` | pre-registered down-capture test (trend = beta clone) |
 | `npm run data:cross-venue -- --coins BTC-USD,ETH-USD` | Coinbase vs Kraken agreement report |
 
-Tests: `tests/unit/{trade-advocate,cross-asset,venue-candles,kraken,cross-venue}.test.ts`.
+Tests: `tests/unit/{trade-advocate,cross-asset,cross-asset-trend.props,venue-candles,kraken,cross-venue,regime.props,universe}.test.ts`.

@@ -122,6 +122,7 @@
     "backtest:xsection": "tsx scripts/backtest-xsection.ts",
     "backtest:pairs": "tsx scripts/backtest-pairs.ts",
     "backtest:relstr": "tsx scripts/backtest-relative-strength.ts",
+    "fetch:funding": "tsx scripts/fetch-funding.ts",
     "meta:allocate": "tsx scripts/meta-allocate.ts",
     "load:binance": "tsx scripts/load-binance-history.ts"
   },

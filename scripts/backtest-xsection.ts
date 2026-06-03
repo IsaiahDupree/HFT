@@ -11,6 +11,7 @@ import "./_env.ts";
 import { listProducts, getCandles, closeTsdb } from "../src/lib/db/candle-store.ts";
 import { sharpe, deflatedSharpe, pbo } from "../src/lib/backtest/candle/stats.ts";
 import { buildPriceSeries, defaultXSectionVariants, xsectionReturns } from "../src/lib/backtest/candle/xsection.ts";
+import { proofCouncil, renderProofCouncil } from "../src/lib/backtest/proof-council.ts";
 
 const arg = (name: string, def: number): number => {
   const i = process.argv.indexOf(name);
@@ -64,5 +65,13 @@ console.log(`\n  best (full): ${variants[bestIdx].label}  ann.Sharpe ${ann(fullS
 console.log(`  walk-forward: IS-best ${variants[isBest].label} → OOS ann.Sharpe ${ann(oosSh).toFixed(2)} ${oosSh > 0 ? "✓ HELD" : "✗ FADED"}`);
 console.log(`  overfit battery (all variants): PBO ${PBO.toFixed(2)}  Deflated-Sharpe ${dsr.dsr.toFixed(2)}`);
 console.log(`  FAIR (momentum family only): best ${variants[momBest].label} ann.Sharpe ${ann(fullSh[momBest]).toFixed(2)} · Deflated-Sharpe ${momDsr.dsr.toFixed(2)} · ${oosHold}/${momIdx.length} momentum variants held OOS`);
-console.log(`  → ${momDsr.dsr > 0.95 && oosHold > momIdx.length / 2 ? "the momentum edge is REAL (OOS-robust + deflation-clean)" : oosHold > momIdx.length / 2 ? "OOS-robust but DSR short of 0.95 — promising, arena-worthy" : "not robust"}\n`);
+console.log(`  → ${momDsr.dsr > 0.95 && oosHold > momIdx.length / 2 ? "the momentum edge is REAL (OOS-robust + deflation-clean)" : oosHold > momIdx.length / 2 ? "OOS-robust but DSR short of 0.95 — promising, arena-worthy" : "not robust"}`);
+
+// Proof Council — advocate / skeptic / verdict over the FAIR (momentum-family) selection
+console.log("\n" + renderProofCouncil(proofCouncil({
+  label: variants[momBest].label, bars: T, feeBps,
+  oosSharpeAnn: ann(sharpe(series[momBest].slice(split))), fullSharpeAnn: ann(fullSh[momBest]),
+  oosHold, variants: momIdx.length, pbo: PBO, dsr: momDsr.dsr,
+  cumPnlPct: cum(series[momBest]) * 100,
+})) + "\n");
 await closeTsdb();

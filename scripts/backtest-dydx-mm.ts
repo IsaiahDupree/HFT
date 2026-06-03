@@ -16,6 +16,7 @@ import { existsSync } from "node:fs";
 import { L2Backtester } from "../src/lib/backtest/l2/engine.ts";
 import { asMmDollar } from "../src/lib/backtest/l2/strategies.ts";
 import { loadCaptureJsonl } from "../src/lib/backtest/l2/replay.ts";
+import { proofCouncil, renderProofCouncil } from "../src/lib/backtest/proof-council.ts";
 
 const arg = (name: string, def: string): string => {
   const i = process.argv.indexOf(name);
@@ -37,11 +38,23 @@ const mid0 = books.length ? (books[0] as any).bidPx : 0;
 
 console.log(`\nbacktest-dydx-mm — ${market} · ${books.length} book moves · ${trades.length} trades · tick $${tick} · clip ${size}\n`);
 console.log(`  ${"maker fee".padEnd(12)} ${"PnL($)".padEnd(9)} ${"fills".padEnd(13)} ${"endInv".padEnd(9)} ${"fees".padEnd(8)} rebates`);
+let rebateRun: ReturnType<L2Backtester["run"]> | undefined;
 for (const makerBps of [2, 1, 0, -1.1]) { // dYdX tiers: base maker ~2bps → high-vol rebate ~-1.1bps; taker ~5bps
   const bt = new L2Backtester({ latencyMs: 50, tick, feeBps: { maker: makerBps, taker: 5 } });
   const s = bt.run(evs, asMmDollar({ size, baseSpreadBps: 1.5, maxNotional: 20_000, gamma: 1.0 }));
+  if (makerBps === -1.1) rebateRun = s;
   const label = makerBps < 0 ? `${makerBps}bps reb` : `+${makerBps}bps`;
   console.log(`  ${label.padEnd(12)} ${s.pnl.toFixed(2).padEnd(9)} ${`${s.nFills}(${s.nMakerFills}m/${s.nTakerFills}t)`.padEnd(13)} ${s.finalInventory.toFixed(3).padEnd(9)} ${s.feesPaid.toFixed(2).padEnd(8)} ${s.rebatesReceived.toFixed(2)}`);
 }
 console.log(`\n  (PnL marks final inventory to mid. Maker fills = captured spread − fee/+rebate; taker fills + inventory MtM = adverse selection cost.)`);
-console.log(`  Sample is one ${(books.length && (books.at(-1)!.ts - books[0].ts).toFixed(0)) || "?"}s recording — illustrative, not hardened. Accumulate via cron for a real verdict.\n`);
+console.log(`  Sample is one ${(books.length && (books.at(-1)!.ts - books[0].ts).toFixed(0)) || "?"}s recording — illustrative, not hardened. Accumulate via cron for a real verdict.`);
+
+// Proof Council — over the rebate tier. The honest "sample" is MAKER FILLS, not book
+// moves; a short recording fills far too few times to test a spread-capture edge → it
+// should land REPAIR_FIRST (accumulate recordings), not a premature edge claim.
+if (rebateRun) {
+  console.log("\n" + renderProofCouncil(proofCouncil({
+    label: `${market} asMmDollar @-1.1bps rebate`,
+    bars: rebateRun.nMakerFills, sampleUnit: "maker fills", feeBps: -1.1,
+  })) + "\n");
+}

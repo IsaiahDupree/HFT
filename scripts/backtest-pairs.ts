@@ -11,6 +11,7 @@ import { listProducts, getCandles, closeTsdb } from "../src/lib/db/candle-store.
 import { sharpe, deflatedSharpe, pbo } from "../src/lib/backtest/candle/stats.ts";
 import { buildPriceSeries } from "../src/lib/backtest/candle/xsection.ts";
 import { allPairs, defaultPairsVariants, pairsVariantSeries } from "../src/lib/backtest/candle/pairs.ts";
+import { proofCouncil, renderProofCouncil } from "../src/lib/backtest/proof-council.ts";
 
 const arg = (name: string, def: number): number => {
   const i = process.argv.indexOf(name);
@@ -50,5 +51,13 @@ for (const { v, i, sh } of variants.map((v, i) => ({ v, i, sh: fullSh[i] })).sor
 console.log(`\n  best (full): ${variants[bestIdx].label} ann.Sharpe ${ann(fullSh[bestIdx]).toFixed(2)}`);
 console.log(`  walk-forward: IS-best ${variants[isBest].label} → OOS ann.Sharpe ${ann(oosSh).toFixed(2)} ${oosSh > 0 ? "✓ HELD" : "✗ FADED"}`);
 console.log(`  overfit battery: PBO ${PBO.toFixed(2)}  Deflated-Sharpe ${dsr.dsr.toFixed(2)}  · ${oosHold}/${variants.length} variants held OOS`);
-console.log(`  → ${PBO < 0.3 && dsr.dsr > 0.95 && oosSh > 0 ? "HARDENED ✓" : oosHold > variants.length / 2 && oosSh > 0 ? "OOS-robust but not strict-hardened — arena-worthy" : "not robust"}\n`);
+console.log(`  → ${PBO < 0.3 && dsr.dsr > 0.95 && oosSh > 0 ? "HARDENED ✓" : oosHold > variants.length / 2 && oosSh > 0 ? "OOS-robust but not strict-hardened — arena-worthy" : "not robust"}`);
+
+// Proof Council — advocate / skeptic / verdict over the walk-forward-selected variant
+console.log("\n" + renderProofCouncil(proofCouncil({
+  label: variants[isBest].label, bars: T, feeBps,
+  oosSharpeAnn: ann(oosSh), fullSharpeAnn: ann(fullSh[isBest]),
+  oosHold, variants: variants.length, pbo: PBO, dsr: deflatedSharpe(series[isBest], fullSh).dsr,
+  cumPnlPct: cum(series[isBest]) * 100,
+})) + "\n");
 await closeTsdb();

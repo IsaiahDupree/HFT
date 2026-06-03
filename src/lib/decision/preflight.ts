@@ -73,6 +73,42 @@ export function assessPreflight(rows: JournaledDecision[], thr: PreflightThresho
   return { ready: blockers.length === 0, passed, blockers, stats };
 }
 
+// ── runtime arming guard ───────────────────────────────────────────────────
+// Live enforcement (blocking/trimming real orders) must NOT happen just because an
+// operator set DECISION_PIPELINE_ENABLED=1 — the shadow journal must also pass the
+// pre-flight. This guard is the runtime enforcement of go-live-check, so the check
+// can't be skipped. Load-once cached (the journal scan runs at most once per process).
+let _armed: boolean | undefined;
+
+/** Reset the load-once arming cache (tests + after a deliberate re-arm). */
+export function resetDecisionPipelineArmedCache(): void { _armed = undefined; }
+
+/**
+ * Is the live decision pipeline ARMED for active enforcement? True only when
+ * DECISION_PIPELINE_ENABLED=1 AND assessPreflight over the shadow journal is READY — OR
+ * ARENA_PREFLIGHT_BYPASS=1 (ops escape hatch, logged via onBlock=undefined). FAIL-SAFE:
+ * any error, a NOT_READY pre-flight, or the flag unset → false (run in shadow, never
+ * enforce). `loadRows` is injected so the DB query stays out of this module + is testable.
+ */
+export function isDecisionPipelineArmed(
+  loadRows: () => JournaledDecision[],
+  thr: PreflightThresholds = DEFAULT_PREFLIGHT_THRESHOLDS,
+  onBlock?: (r: PreflightResult) => void,
+): boolean {
+  if (process.env.DECISION_PIPELINE_ENABLED !== "1") return false;
+  if (process.env.ARENA_PREFLIGHT_BYPASS === "1") return true;
+  if (_armed === undefined) {
+    try {
+      const result = assessPreflight(loadRows(), thr);
+      _armed = result.ready;
+      if (!result.ready && onBlock) onBlock(result);
+    } catch {
+      _armed = false; // fail-safe: can't verify readiness → do not arm
+    }
+  }
+  return _armed;
+}
+
 export function renderPreflight(r: PreflightResult): string {
   const b = r.stats.buckets;
   const bucketStr = Object.keys(b).sort().map((k) => `${k}:${b[k]}`).join(" ") || "—";

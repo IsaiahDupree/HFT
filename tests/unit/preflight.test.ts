@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
-  assessPreflight, renderPreflight, DEFAULT_PREFLIGHT_THRESHOLDS, type JournaledDecision,
+  assessPreflight, renderPreflight, DEFAULT_PREFLIGHT_THRESHOLDS,
+  isDecisionPipelineArmed, resetDecisionPipelineArmedCache, type JournaledDecision,
 } from "@/lib/decision/preflight";
 
 const BASE = Date.UTC(2026, 0, 1, 0, 0, 0);
@@ -92,5 +93,52 @@ describe("renderPreflight", () => {
     const text = renderPreflight(assessPreflight(rows(3)));
     expect(text).toMatch(/^GO-LIVE PRE-FLIGHT: NOT_READY\n/);
     expect(text).toMatch(/blockers:\n- only 3 journaled decisions/);
+  });
+});
+
+describe("isDecisionPipelineArmed — runtime arming guard", () => {
+  const ENV = ["DECISION_PIPELINE_ENABLED", "ARENA_PREFLIGHT_BYPASS"];
+  let saved: Record<string, string | undefined> = {};
+  beforeEach(() => { saved = {}; for (const k of ENV) { saved[k] = process.env[k]; delete process.env[k]; } resetDecisionPipelineArmedCache(); });
+  afterEach(() => { for (const k of ENV) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } resetDecisionPipelineArmedCache(); });
+
+  it("NOT armed when DECISION_PIPELINE_ENABLED is unset (journal never read)", () => {
+    let calls = 0;
+    expect(isDecisionPipelineArmed(() => { calls++; return rows(15); })).toBe(false);
+    expect(calls).toBe(0);
+  });
+
+  it("armed when ENABLED=1 and the shadow journal is READY", () => {
+    process.env.DECISION_PIPELINE_ENABLED = "1";
+    expect(isDecisionPipelineArmed(() => rows(15))).toBe(true);
+  });
+
+  it("NOT armed (fail-safe to shadow) when ENABLED=1 but the pre-flight is NOT_READY; onBlock fires", () => {
+    process.env.DECISION_PIPELINE_ENABLED = "1";
+    let blocked: { ready: boolean; blockers: string[] } | null = null;
+    expect(isDecisionPipelineArmed(() => rows(3), undefined, (r) => { blocked = r; })).toBe(false);
+    expect(blocked!.ready).toBe(false);
+    expect(blocked!.blockers.length).toBeGreaterThan(0);
+  });
+
+  it("ARENA_PREFLIGHT_BYPASS=1 arms without touching the journal", () => {
+    process.env.DECISION_PIPELINE_ENABLED = "1";
+    process.env.ARENA_PREFLIGHT_BYPASS = "1";
+    let calls = 0;
+    expect(isDecisionPipelineArmed(() => { calls++; return rows(3); })).toBe(true);
+    expect(calls).toBe(0); // bypass short-circuits before the journal scan
+  });
+
+  it("is load-once cached — the journal scan runs at most once per process", () => {
+    process.env.DECISION_PIPELINE_ENABLED = "1";
+    let calls = 0;
+    const load = () => { calls++; return rows(15); };
+    isDecisionPipelineArmed(load); isDecisionPipelineArmed(load); isDecisionPipelineArmed(load);
+    expect(calls).toBe(1);
+  });
+
+  it("fail-safe: a journal read error → NOT armed", () => {
+    process.env.DECISION_PIPELINE_ENABLED = "1";
+    expect(isDecisionPipelineArmed(() => { throw new Error("db down"); })).toBe(false);
   });
 });

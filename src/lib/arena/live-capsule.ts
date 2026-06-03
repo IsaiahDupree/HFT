@@ -22,6 +22,7 @@ import { runDecisionPipeline } from "@/lib/decision/pipeline";
 import { recordDecision } from "@/lib/decision/journal";
 import { loadMetaModel } from "@/lib/decision/meta-label-store";
 import { activeRegimeFitTable } from "@/lib/decision/regime-fit-table";
+import { isDecisionPipelineArmed, type JournaledDecision } from "@/lib/decision/preflight";
 import type { MetaLabelSizing } from "@/lib/decision/meta-label";
 import type { DecisionContext } from "@/lib/decision/types";
 import { snapshotFromWindow } from "./context";
@@ -300,8 +301,23 @@ export async function routeArenaSignal(
       const decisionResult = runDecisionPipeline(decisionCtx, { metaLabel: metaLabelSizing(), regimeFitTable: activeRegimeFitTable(), skipGovernor: true });
       recordDecision(decisionCtx, decisionResult);
 
+      // Runtime pre-flight guard: ENFORCE (block / trim real orders) only when ARMED —
+      // DECISION_PIPELINE_ENABLED=1 AND the shadow journal passes the pre-flight (or an
+      // explicit ARENA_PREFLIGHT_BYPASS=1). If ENABLED but the pre-flight is NOT_READY we
+      // still journal (shadow) but never block/trim — this enforces go-live-check at
+      // runtime so it can't be skipped. Load-once cached → the journal scan is once/process.
+      const enforce = isDecisionPipelineArmed(
+        () => db().prepare(`SELECT ts, decision, approval_score, gate_results_json FROM decision_journal ORDER BY id DESC LIMIT 5000`).all() as JournaledDecision[],
+        undefined,
+        (r) => insertEvolutionEvent({
+          event_type: "decision-pipeline-not-armed",
+          summary: `live pipeline NOT armed — pre-flight NOT_READY: ${r.blockers[0] ?? ""} (running shadow-only)`,
+          payload_json: JSON.stringify({ blockers: r.blockers, stats: r.stats }),
+        }),
+      );
+
       // ─── ACTIVE ENFORCEMENT ────────────────────────────────────────────
-      if (pipelineEnabled) {
+      if (enforce) {
         // Short-circuit rejections + kill switch + watchlist.
         if (decisionResult.decision === "KILL_SWITCH") {
           insertEvolutionEvent({

@@ -80,6 +80,50 @@ export function equalWeightBuyHoldReturns(
   return rets;
 }
 
+/**
+ * Equal-weight TREND portfolio — each bar, hold every coin trading above its own SMA(`smaN`)
+ * equal-weight, realize t→t+1, charge `feeBps` on turnover. A long-flat momentum portfolio
+ * (vs relativeStrengthReturns' top-K rotation): "own the coins that are trending, skip the
+ * rest." Aligned to start at `startIndex`. NO LOOKAHEAD (SMA at t uses closes ≤ t). A second
+ * strategy family for the regime-conditional analysis, directly comparable to the beta benchmark.
+ */
+export function equalWeightTrendReturns(
+  coins: readonly string[],
+  data: PriceSeries,
+  days: readonly number[],
+  smaN: number,
+  opts: { feeBps?: number; startIndex?: number } = {},
+): number[] {
+  const feeBps = opts.feeBps ?? 10;
+  const start = opts.startIndex ?? smaN;
+  const rets: number[] = [];
+  let prevW: Record<string, number> = {};
+  for (let i = start; i < days.length - 1; i++) {
+    const t = days[i], tNext = days[i + 1];
+    // a coin is "trending" if its close at t exceeds its trailing SMA over the last smaN bars
+    // that it actually has (≥ half present), using only closes ≤ t.
+    const longs: string[] = [];
+    for (const c of coins) {
+      if (!data[c].has(t) || !data[c].has(tNext)) continue;
+      let sum = 0, k = 0;
+      for (let j = Math.max(0, i - smaN + 1); j <= i; j++) { const p = data[c].get(days[j]); if (p != null && Number.isFinite(p)) { sum += p; k++; } }
+      if (k < Math.max(2, Math.floor(smaN / 2))) continue;
+      if (data[c].get(t)! > sum / k) longs.push(c);
+    }
+    const wMap: Record<string, number> = {};
+    let pr = 0;
+    if (longs.length) {
+      const w = 1 / longs.length;
+      for (const c of longs) { pr += w * (data[c].get(tNext)! / data[c].get(t)! - 1); wMap[c] = w; }
+    }
+    let turn = 0;
+    for (const c of new Set([...Object.keys(prevW), ...Object.keys(wMap)])) turn += Math.abs((wMap[c] ?? 0) - (prevW[c] ?? 0));
+    rets.push(pr - turn * feeBps / 1e4);
+    prevW = wMap;
+  }
+  return rets;
+}
+
 /** The standard relative-strength variant grid: look-back × number held. */
 export function defaultRelStrengthVariants(
   lookbacks: readonly number[] = [5, 10, 20, 30],

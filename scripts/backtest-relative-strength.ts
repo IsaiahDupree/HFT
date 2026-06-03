@@ -12,7 +12,7 @@ import { sharpe, deflatedSharpe, pbo } from "../src/lib/backtest/candle/stats.ts
 import { buildPriceSeries } from "../src/lib/backtest/candle/xsection.ts";
 import { relativeStrengthReturns, defaultRelStrengthVariants, equalWeightBuyHoldReturns } from "../src/lib/backtest/candle/cross-asset.ts";
 import { proofCouncil, renderProofCouncil } from "../src/lib/backtest/proof-council.ts";
-import { tradeAdvocate, renderTradeAdvice } from "../src/lib/backtest/trade-advocate.ts";
+import { adviseTrade, renderTradeMemo } from "../src/lib/backtest/advisor.ts";
 import { selectUniverse, universeHealth } from "../src/lib/backtest/candle/universe.ts";
 
 const arg = (name: string, def: number): number => {
@@ -66,11 +66,14 @@ console.log("\n" + renderProofCouncil(proofCouncil({
   cumPnlPct: cum(series[isBest]) * 100,
 })) + "\n");
 
-// Trade Advocate: does the big cum PnL beat just HOLDING the basket? (beta vs alpha)
+// Advisor — bull (why buy/trade) + bear (why not) under ONE VOICE. Folds in beta-vs-alpha,
+// the overfit gauntlet, AND the data-integrity signal (a universe splice makes the benchmark
+// untrustworthy → STAND_ASIDE).
 const beta = equalWeightBuyHoldReturns(coins, data, days, maxL);
-console.log(renderTradeAdvice(tradeAdvocate({
+console.log(renderTradeMemo(adviseTrade({
   label: variants[isBest].label,
   strategyReturns: series[isBest], benchmarkReturns: beta,
   pbo: PBO, dsr: deflatedSharpe(series[isBest], fullSh).dsr, oosFrac: 0.3,
+  data: { spliceSuspected: health.spliceSuspected },
 })) + "\n");
 await closeTsdb();

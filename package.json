@@ -115,6 +115,7 @@
     "tsdb:migrate": "tsx scripts/tsdb-migrate.ts",
     "tsdb:policies": "tsx scripts/tsdb-policies.ts",
     "calibration:report": "tsx scripts/calibration-report.ts",
+    "go-live-check": "tsx scripts/go-live-check.ts",
     "capture:dydx": "tsx scripts/capture-l2-dydx.ts",
     "record:dydx": "tsx scripts/record-l2-dydx.ts",
     "backtest:dydx:mm": "tsx scripts/backtest-dydx-mm.ts",

@@ -35,7 +35,9 @@ new.txt
 *-journal
 *-shm
 *-wal
-data/
+# Anchored to the repo root: the runtime warehouse/funding dump dir. Do NOT match
+# source directories like src/lib/data/ (the multi-venue adapter code).
+/data/
 
 # ---- Local sweep + worker output ----
 # Broader glob: catches dydx-*-results.json (one of which embedded a testnet

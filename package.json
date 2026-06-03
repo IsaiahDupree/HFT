@@ -123,6 +123,7 @@
     "backtest:pairs": "tsx scripts/backtest-pairs.ts",
     "backtest:relstr": "tsx scripts/backtest-relative-strength.ts",
     "fetch:funding": "tsx scripts/fetch-funding.ts",
+    "data:cross-venue": "tsx scripts/cross-venue-check.ts",
     "meta:allocate": "tsx scripts/meta-allocate.ts",
     "load:binance": "tsx scripts/load-binance-history.ts"
   },

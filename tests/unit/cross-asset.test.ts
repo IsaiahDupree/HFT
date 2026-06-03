@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   relativeStrengthReturns, defaultRelStrengthVariants, btcRegimeFilter, alignClosesByTimestamp,
+  equalWeightBuyHoldReturns,
 } from "@/lib/backtest/candle/cross-asset";
 import type { PriceSeries } from "@/lib/backtest/candle/xsection";
 
@@ -65,6 +66,39 @@ describe("relativeStrengthReturns — long the strongest coins", () => {
   it("defaultRelStrengthVariants is the lookback × topK grid", () => {
     const vs = defaultRelStrengthVariants([5, 10], [1, 2]);
     expect(vs.map((v) => v.label)).toEqual(["rs5/top1", "rs5/top2", "rs10/top1", "rs10/top2"]);
+  });
+});
+
+describe("equalWeightBuyHoldReturns — the beta benchmark", () => {
+  it("averages every eligible coin's next-bar return, no fees", () => {
+    const { coins, data, days } = mk({ A: [100, 120, 132], B: [100, 110, 121], C: [100, 105, 110.25] });
+    const r = equalWeightBuyHoldReturns(coins, data, days, 0);
+    // bar0: avg of A 20%, B 10%, C 5% = 11.667%
+    expect(r[0]).toBeCloseTo((0.2 + 0.1 + 0.05) / 3, 9);
+    // bar1: avg of A 10%, B 10%, C 5% = 8.333%
+    expect(r[1]).toBeCloseTo((0.1 + 0.1 + 0.05) / 3, 9);
+  });
+
+  it("aligns 1:1 with relativeStrengthReturns at the same startIndex so they subtract bar-for-bar", () => {
+    const p = { A: [100, 130, 110, 150, 120], B: [100, 90, 130, 95, 140], C: [100, 110, 100, 120, 105] };
+    const { coins, data, days } = mk(p);
+    const strat = relativeStrengthReturns(V(1, 1), coins, data, days, { feeBps: 0, startIndex: 1 });
+    const beta = equalWeightBuyHoldReturns(coins, data, days, 1);
+    expect(beta).toHaveLength(strat.length);
+  });
+
+  it("skips coins missing a bar (only eligible names count)", () => {
+    const { coins, data, days } = mk({ A: [100, 110], B: [100, 100] });
+    data.B.delete(1); // B has no close at t+1 → excluded that bar
+    expect(equalWeightBuyHoldReturns(coins, data, days, 0)[0]).toBeCloseTo(0.1, 9); // only A
+  });
+
+  it("has NO LOOKAHEAD — a far-future price can't change earlier benchmark returns", () => {
+    const p: Record<string, number[]> = { A: [100, 110, 105, 120, 118], B: [100, 105, 110, 108, 115] };
+    const base = mk(p); const r0 = equalWeightBuyHoldReturns(base.coins, base.data, base.days, 0);
+    const p2 = { ...p, A: [...p.A] }; p2.A[4] = 9999;
+    const pert = mk(p2); const r1 = equalWeightBuyHoldReturns(pert.coins, pert.data, pert.days, 0);
+    expect(r1.slice(0, -1)).toEqual(r0.slice(0, -1));
   });
 });
 

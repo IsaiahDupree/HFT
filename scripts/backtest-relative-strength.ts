@@ -10,8 +10,9 @@ import "./_env.ts";
 import { listProducts, getCandles, closeTsdb } from "../src/lib/db/candle-store.ts";
 import { sharpe, deflatedSharpe, pbo } from "../src/lib/backtest/candle/stats.ts";
 import { buildPriceSeries } from "../src/lib/backtest/candle/xsection.ts";
-import { relativeStrengthReturns, defaultRelStrengthVariants } from "../src/lib/backtest/candle/cross-asset.ts";
+import { relativeStrengthReturns, defaultRelStrengthVariants, equalWeightBuyHoldReturns } from "../src/lib/backtest/candle/cross-asset.ts";
 import { proofCouncil, renderProofCouncil } from "../src/lib/backtest/proof-council.ts";
+import { tradeAdvocate, renderTradeAdvice } from "../src/lib/backtest/trade-advocate.ts";
 
 const arg = (name: string, def: number): number => {
   const i = process.argv.indexOf(name);
@@ -56,5 +57,13 @@ console.log("\n" + renderProofCouncil(proofCouncil({
   oosSharpeAnn: ann(oosSh), fullSharpeAnn: ann(fullSh[isBest]),
   oosHold, variants: variants.length, pbo: PBO, dsr: deflatedSharpe(series[isBest], fullSh).dsr,
   cumPnlPct: cum(series[isBest]) * 100,
+})) + "\n");
+
+// Trade Advocate: does the big cum PnL beat just HOLDING the basket? (beta vs alpha)
+const beta = equalWeightBuyHoldReturns(coins, data, days, maxL);
+console.log(renderTradeAdvice(tradeAdvocate({
+  label: variants[isBest].label,
+  strategyReturns: series[isBest], benchmarkReturns: beta,
+  pbo: PBO, dsr: deflatedSharpe(series[isBest], fullSh).dsr, oosFrac: 0.3,
 })) + "\n");
 await closeTsdb();

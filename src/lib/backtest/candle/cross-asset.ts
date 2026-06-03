@@ -55,6 +55,31 @@ export function relativeStrengthReturns(
   return rets;
 }
 
+/**
+ * Equal-weight buy-and-hold of the whole universe — the BETA benchmark a relative-strength
+ * (or any long-only) strategy must BEAT to claim alpha. Each bar holds every eligible coin
+ * equal-weight and realizes t→t+1; no ranking, no turnover fee (it's the "do nothing but hold"
+ * yardstick). Aligned 1:1 to `relativeStrengthReturns(..., { startIndex })` so you can subtract
+ * the two series bar-for-bar to get excess-over-beta. NO LOOKAHEAD (return uses closes ≤ t+1).
+ */
+export function equalWeightBuyHoldReturns(
+  coins: readonly string[],
+  data: PriceSeries,
+  days: readonly number[],
+  startIndex: number,
+): number[] {
+  const rets: number[] = [];
+  for (let i = startIndex; i < days.length - 1; i++) {
+    const t = days[i], tNext = days[i + 1];
+    const elig = coins.filter((c) => data[c].has(t) && data[c].has(tNext));
+    if (!elig.length) { rets.push(0); continue; }
+    let pr = 0;
+    for (const c of elig) pr += (data[c].get(tNext)! / data[c].get(t)! - 1) / elig.length;
+    rets.push(pr);
+  }
+  return rets;
+}
+
 /** The standard relative-strength variant grid: look-back × number held. */
 export function defaultRelStrengthVariants(
   lookbacks: readonly number[] = [5, 10, 20, 30],

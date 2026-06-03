@@ -16,19 +16,29 @@ import {
   volRegimeLabels, trendRegimeLabels, breadthRegimeLabels, combineLabels,
   regimeConditionalAlpha, candidateConditionalEdges, multipleTestingReport, type ConditionalAlpha,
 } from "../src/lib/backtest/candle/regime.ts";
+import { selectUniverse, universeHealth } from "../src/lib/backtest/candle/universe.ts";
 
 const num = (name: string, def: number): number => {
   const i = process.argv.indexOf(name);
   return i >= 0 && process.argv[i + 1] ? Number(process.argv[i + 1]) : def;
 };
+const str = (name: string, def: string): string => {
+  const i = process.argv.indexOf(name);
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : def;
+};
 const feeBps = num("--fee-bps", 10);
 const oosFrac = num("--oos", 0.3);
 const minOos = num("--min-oos", 60);
 const minExcess = num("--min-excess", 0.3);
+const universe = str("--universe", "all") as "all" | "usd" | "usdt" | "alive";
 
 const products = await listProducts("ONE_DAY");
-const rows: Record<string, Array<{ start_unix: number; close: number }>> = {};
-for (const c of products) rows[c] = await getCandles(c, "ONE_DAY");
+const rawRows: Record<string, Array<{ start_unix: number; close: number }>> = {};
+for (const c of products) rawRows[c] = await getCandles(c, "ONE_DAY");
+const rows = selectUniverse(rawRows, universe);
+const health = universeHealth(rows);
+console.log(`\n  universe=${universe}: ${health.coins} coins, ${health.days} days, active ${health.minActive}–${health.maxActive}/day` +
+  (health.spliceSuspected ? ` · ⚠ SPLICE: ${health.biggestDrop!.from}→${health.biggestDrop!.to} coins on ${new Date(health.biggestDrop!.atUnix * 1000).toISOString().slice(0, 10)}` : ` · no splice`));
 const { coins, data, days } = buildPriceSeries(rows);
 
 // Strategy series (portfolio-level, comparable to the beta benchmark). Align all at startIndex.
@@ -43,7 +53,8 @@ const strategies: Strat[] = [
 ];
 
 // Regimes over the universe / BTC, sliced to align with the strategy series [maxL, days.length-1).
-const btc = days.map((d) => data["BTC-USD"]?.get(d) ?? NaN);
+const btcKey = coins.find((c) => /^BTC[-]?USD/i.test(c)) ?? coins[0];
+const btc = days.map((d) => data[btcKey]?.get(d) ?? NaN);
 const sliceTo = (a: string[]) => a.slice(maxL, days.length - 1);
 const vol = sliceTo(volRegimeLabels(btc));
 const trend = sliceTo(trendRegimeLabels(btc));

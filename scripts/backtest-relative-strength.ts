@@ -13,16 +13,23 @@ import { buildPriceSeries } from "../src/lib/backtest/candle/xsection.ts";
 import { relativeStrengthReturns, defaultRelStrengthVariants, equalWeightBuyHoldReturns } from "../src/lib/backtest/candle/cross-asset.ts";
 import { proofCouncil, renderProofCouncil } from "../src/lib/backtest/proof-council.ts";
 import { tradeAdvocate, renderTradeAdvice } from "../src/lib/backtest/trade-advocate.ts";
+import { selectUniverse, universeHealth } from "../src/lib/backtest/candle/universe.ts";
 
 const arg = (name: string, def: number): number => {
   const i = process.argv.indexOf(name);
   return i >= 0 && process.argv[i + 1] ? Number(process.argv[i + 1]) : def;
 };
 const feeBps = arg("--fee-bps", 10);
+const uniIdx = process.argv.indexOf("--universe");
+const universe = (uniIdx >= 0 && process.argv[uniIdx + 1] ? process.argv[uniIdx + 1] : "all") as "all" | "usd" | "usdt" | "alive";
 
 const products = await listProducts("ONE_DAY");
-const rows: Record<string, Array<{ start_unix: number; close: number }>> = {};
-for (const c of products) rows[c] = await getCandles(c, "ONE_DAY");
+const rawRows: Record<string, Array<{ start_unix: number; close: number }>> = {};
+for (const c of products) rawRows[c] = await getCandles(c, "ONE_DAY");
+const rows = selectUniverse(rawRows, universe);
+const health = universeHealth(rows);
+console.log(`\n  universe=${universe}: ${health.coins} coins, ${health.days} days, active ${health.minActive}–${health.maxActive}/day` +
+  (health.spliceSuspected ? ` · ⚠ SPLICE ${health.biggestDrop!.from}→${health.biggestDrop!.to} on ${new Date(health.biggestDrop!.atUnix * 1000).toISOString().slice(0, 10)}` : ` · no splice`));
 const { coins, data, days } = buildPriceSeries(rows);
 
 const variants = defaultRelStrengthVariants();

@@ -116,6 +116,36 @@ describe("routeArenaSignal — non-entry early-outs", () => {
   });
 });
 
+describe("routeArenaSignal — F1: the decision pipeline never gates EXITS", () => {
+  it("does NOT run/journal the entry-trained pipeline for an EXIT, even with DECISION_PIPELINE_SHADOW=1", async () => {
+    const { paperAgentId } = await seed();
+    const prev = process.env.DECISION_PIPELINE_SHADOW;
+    process.env.DECISION_PIPELINE_SHADOW = "1"; // would journal a decision for an ENTRY
+    try {
+      const { findLiveCapsuleForPaperAgent, routeArenaSignal } = await import("@/lib/arena/live-capsule");
+      const { db } = await import("@/lib/db/client");
+      const cap = findLiveCapsuleForPaperAgent(paperAgentId)!;
+      const position = {
+        venue: "sim-coinbase" as const, market_id: "BTC-USD", side: "BUY" as const,
+        size_usd: 25, entry_price: 60000, opened_at: new Date().toISOString(),
+      };
+      // The router side (coinbase adapter, DRY_RUN) is not under test — we only assert the
+      // pipeline was skipped, i.e. no decision was journaled for the risk-reducing exit.
+      try {
+        await routeArenaSignal(
+          { kind: "exit", venue: "sim-coinbase", market_id: "BTC-USD", rationale: "stop" } as any,
+          cap, paperAgentId, 60000, position,
+        );
+      } catch { /* router-side errors are irrelevant to the F1 invariant */ }
+      const n = (db().prepare(`SELECT COUNT(*) AS n FROM decision_journal`).get() as { n: number }).n;
+      expect(n).toBe(0); // exit must NOT be gated/journaled by the entry-only pipeline
+    } finally {
+      if (prev === undefined) delete process.env.DECISION_PIPELINE_SHADOW;
+      else process.env.DECISION_PIPELINE_SHADOW = prev;
+    }
+  });
+});
+
 describe("refreshCapsuleRealtime", () => {
   it("writes lifetime PnL into capsules.current_pnl_usd", async () => {
     const { paperAgentId, capsuleId } = await seed();

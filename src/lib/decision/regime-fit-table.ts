@@ -17,14 +17,16 @@
  *     caller keeps the static regimeFitScore.
  *   - news_shock hard-reject + thin-cell + missing-table all stay on the static rail.
  *
- * PARITY (the load-bearing correctness issue): decision_journal.strategy_kind holds
- * TWO vocabularies — sim.ts writes genome.kind ("poly_fade_spike", …) while
- * live-capsule.ts writes signal.venue ("sim-poly"/"sim-coinbase"). We train on the
- * genome-kind vocabulary ONLY: the builder DROPS venue rows, and `lookupLearnedFit`
- * refuses any strategy_kind ∉ SUB_GENOME_KINDS. So the learned path is parity-clean
- * for sim agents; live-capsule lookups always fall back (its venue keys never match)
- * until live-capsule v2 reads genome.kind from the bound paper_agent. Contained, not
- * coerced — we never alias venue→kind.
+ * PARITY (the load-bearing correctness issue): BOTH sim.ts and (as of the v2 wiring)
+ * live-capsule.ts now write genome.kind ("poly_fade_spike", …) as strategy_kind — live
+ * resolves it from the bound paper_agent via `genomeKindOr` (venue fallback only when the
+ * genome is missing → still drops out, safe). The builder DROPS any strategy_kind ∉
+ * SUB_GENOME_KINDS and `lookupLearnedFit` refuses them, so composite ('multi_strategy')
+ * and venue-fallback rows never form cells. Train/serve parity now rests on the
+ * calibration LOADER, which joins paper_trades — populated only by the sim path — so live
+ * decision rows are excluded from TRAINING (they are journaled but not joined). If live
+ * outcomes are ever added to the loader, re-examine domain parity (sim fill math vs live
+ * fills) before trusting the cells. We never alias venue→kind.
  *
  * LEAKAGE NOTE: the regime gate score is also a meta-labeler training feature
  * (calibration-loader → meta-label). A LEARNED regime score is a smoothed win-rate,

@@ -469,6 +469,21 @@ export function parseGenome(json: string): Genome {
   return GenomeSchema.parse(JSON.parse(json));
 }
 
+/**
+ * Best-effort genome `kind` from a stored genome_json, else `fallback`. NEVER throws —
+ * a missing / malformed / schema-invalid genome yields the fallback. Used by live-capsule
+ * to pass the real strategy kind (a SubGenomeKind) to the decision pipeline, so the learned
+ * regime-fit table (which keys on genome kind) is live-capable — parity with the sim path.
+ */
+export function genomeKindOr(json: string | null | undefined, fallback: string): string {
+  if (!json) return fallback;
+  try {
+    return parseGenome(json).kind;
+  } catch {
+    return fallback;
+  }
+}
+
 /** Human-friendly short name used in agent names (e.g. "fade-spike", "cb-bo"). */
 export function genomeNickname(g: Genome): string {
   switch (g.kind) {

@@ -102,13 +102,16 @@ const EVOLVE_EVERY = Number(process.env.ARENA_EVOLVE_EVERY ?? "50");
         let proceedToSim = true;
         let liveRouteResult: { liveTokenId?: string; liveSizeUsd?: number; brokerOrderId?: string; clientOrderId?: string } | null = null;
         if (capsule && liveRoutable) {
-          const refPrice = ctx.snapshots.get(signal.market_id)?.latest.price ?? 0;
+          const win = ctx.snapshots.get(signal.market_id);
+          const refPrice = win?.latest.price ?? 0;
           // For exits, look up the open position so the router can compute
           // base_size from the held qty.
           const position = signal.kind === "exit"
             ? agent.positions.find((p) => p.market_id === signal.market_id)
             : undefined;
-          const route = await routeArenaSignal(signal, capsule, agent.id, refPrice, position);
+          // Pass the already-built tick window so the decision pipeline's regime features
+          // come from the SAME window (no per-order rebuild; train/serve parity).
+          const route = await routeArenaSignal(signal, capsule, agent.id, refPrice, position, win);
           if (!route.ok) { proceedToSim = false; stats.live_rejects += 1; }
           else if (route.status === "filled") {
             stats.live_fills += 1;

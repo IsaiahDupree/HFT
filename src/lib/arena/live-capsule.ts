@@ -24,8 +24,9 @@ import { loadMetaModel } from "@/lib/decision/meta-label-store";
 import { activeRegimeFitTable } from "@/lib/decision/regime-fit-table";
 import type { MetaLabelSizing } from "@/lib/decision/meta-label";
 import type { DecisionContext } from "@/lib/decision/types";
-import { buildLiveTickContext, snapshotFromWindow } from "./context";
-import type { Position, Signal } from "./types";
+import { snapshotFromWindow } from "./context";
+import { genomeKindOr } from "./genome";
+import type { Position, Signal, SnapshotWindow } from "./types";
 
 // Meta-label sizing (trim-only) is opt-in via META_LABEL_SIZING=1 + a trained
 // model at data/meta-label-model.json (npm run train:metalabel). Loaded once,
@@ -124,6 +125,7 @@ export async function routeArenaSignal(
   agentId: number,
   refPrice: number,
   position?: Position,
+  win?: SnapshotWindow, // the caller's already-built tick window for signal.market_id (regime features)
 ): Promise<RouteResult> {
   if (signal.kind === "hold") return { ok: false, code: "NO_SIGNAL", reason: "hold" };
   if (!supportsLiveRouting(signal)) {
@@ -253,23 +255,33 @@ export async function routeArenaSignal(
   // ───────────────────────────────────────────────────────────────────────
   const pipelineShadow = process.env.DECISION_PIPELINE_SHADOW === "1";
   const pipelineEnabled = process.env.DECISION_PIPELINE_ENABLED === "1";
-  if (pipelineShadow || pipelineEnabled) {
+  // ENTRY-ONLY: the decision pipeline is an entry gate — the meta-labeler + regime-fit
+  // table are trained EXCLUSIVELY on entries (calibration grades each entry by its linked
+  // exit's PnL). It must NEVER gate or trim an EXIT: a "reduce size" applied to a closing
+  // order means "close LESS" = MORE live exposure, using an out-of-distribution model that
+  // has no exit labels. Exits always flow through to flatten risk. (Review finding F1.)
+  if ((pipelineShadow || pipelineEnabled) && intent === "entry") {
     try {
-      // F2 fix: feed a REAL snapshot from the order's market window so the regime gate
-      // classifies an ACTUAL regime (not 'unknown') and the meta-labeler sees in-
-      // distribution features. Uses the SAME `snapshotFromWindow` mapper the sim shadow
-      // path uses → train/serve parity. Best-effort: a market with no recent snapshots
-      // falls back to undefined (→ regime 'unknown' → meta-label no-op, the prior safe
-      // behavior), so this never blocks or changes a trade when data is missing.
-      let liveSnapshot: DecisionContext["snapshot"];
+      // Real snapshot for the regime / eligibility features, built from the caller's
+      // ALREADY-RESOLVED tick window (no per-order full-table rebuild; same default
+      // history horizon + the signal.market_id key the sim/train path uses → train/serve
+      // parity). A missing window → undefined → regime 'unknown' → meta-label no-op (the
+      // prior safe fallback), so this never blocks or changes a trade when data is absent.
+      const liveSnapshot: DecisionContext["snapshot"] = win ? snapshotFromWindow(win, order.refPrice) : undefined;
+      // Real strategy kind from the bound paper_agent's genome so the regime-fit table
+      // (keyed on genome kind) is live-capable — parity with the sim path. Composite
+      // ('multi_strategy') genomes key on their top-level kind on BOTH paths; that is not a
+      // SubGenomeKind, so regime-fit stays on the static rail for composites by design.
+      // Venue fallback if the genome is unavailable (→ regime-fit static, safe).
+      let stratKind: string = signal.venue;
       try {
-        const win = buildLiveTickContext({ historyDays: 2, enrichCrossVenue: false }).snapshots.get(order.symbol);
-        if (win) liveSnapshot = snapshotFromWindow(win, order.refPrice);
-      } catch { /* snapshot build is best-effort */ }
+        const row = db().prepare(`SELECT genome_json FROM paper_agents WHERE id = ?`).get(capsule.paper_agent_id) as { genome_json?: string } | undefined;
+        stratKind = genomeKindOr(row?.genome_json, signal.venue);
+      } catch { /* genome lookup is best-effort → venue fallback */ }
       const decisionCtx: DecisionContext = {
         agentId,
         capsuleId: capsule.id,
-        strategyKind: signal.venue, // best signal we have at this layer; v2 reads genome.kind from the bound paper_agent
+        strategyKind: stratKind, // genome.kind from the bound paper_agent (regime-fit-table live-capable); venue fallback
         proposal: {
           venue: order.venue,
           symbol: order.symbol,
@@ -282,7 +294,10 @@ export async function routeArenaSignal(
         snapshot: liveSnapshot,
         ts: new Date().toISOString(),
       };
-      const decisionResult = runDecisionPipeline(decisionCtx, { metaLabel: metaLabelSizing(), regimeFitTable: activeRegimeFitTable() });
+      // skipGovernor: match the sim/train path (sim.ts passes skipGovernor:true), so the
+      // serve score-space has the same gate set the meta-labeler trained on. The live
+      // router enforces portfolio-level risk independently (capsules/gate.ts + risk/engine).
+      const decisionResult = runDecisionPipeline(decisionCtx, { metaLabel: metaLabelSizing(), regimeFitTable: activeRegimeFitTable(), skipGovernor: true });
       recordDecision(decisionCtx, decisionResult);
 
       // ─── ACTIVE ENFORCEMENT ────────────────────────────────────────────

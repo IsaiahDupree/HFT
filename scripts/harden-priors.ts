@@ -23,6 +23,7 @@ import {
   donchianBreakout, smaTrend, zMeanReversion,
   emaMomentum, macdTrend, rsiMomentum, atrBreakout, supertrend, volRegimeFilter,
 } from "../src/lib/backtest/candle/strategies.ts";
+import { btcRegimeFilter, alignClosesByTimestamp } from "../src/lib/backtest/candle/cross-asset.ts";
 import { applySizing, turnover } from "../src/lib/backtest/candle/sizing.ts";
 import { deflatedSharpe, median, multiFoldWalkForward, pbo, sharpe, variantReturns } from "../src/lib/backtest/candle/stats.ts";
 
@@ -50,7 +51,7 @@ type V = { label: string; positions: number[]; raw?: string };
 
 /** Raw trend/mean-rev grid, windows scaled to the bar size (×barsPerDay). When
  *  --sized, append the inverse-vol overlay of each as an extra registered trial. */
-function allVariants(c: DailyCandle[]): V[] {
+function allVariants(c: DailyCandle[], btcCloses: Array<number | undefined>): V[] {
   const W = (days: number) => Math.max(2, Math.round(days * barsPerDay));
   const raw: V[] = [];
   for (const d of [10, 20, 50, 100, 200]) raw.push({ label: `sma${d}d`, positions: smaTrend(c, W(d)) });
@@ -63,6 +64,13 @@ function allVariants(c: DailyCandle[]): V[] {
   for (const d of [20, 55]) for (const m of [0.5, 1]) raw.push({ label: `atrbo${d}/${m}`, positions: atrBreakout(c, W(d), m) });
   for (const d of [10, 14]) for (const m of [2, 3]) raw.push({ label: `super${d}/${m}`, positions: supertrend(c, W(d), m) });
   raw.push({ label: "ema20/50@hivol", positions: volRegimeFilter(c, emaMomentum(c, W(20), W(50)), W(14), "high", W(100)) });
+  // BTC-regime-gated momentum: only long when BTC is in an uptrend. Registered only when
+  // BTC closes align well with this coin's bars (else it would be a silent all-zero no-op).
+  const btcCoverage = btcCloses.filter((x) => x != null && Number.isFinite(x)).length / Math.max(1, btcCloses.length);
+  if (btcCoverage > 0.8) {
+    raw.push({ label: "ema20/50@btc", positions: btcRegimeFilter(emaMomentum(c, W(20), W(50)), btcCloses, W(50)) });
+    raw.push({ label: "super10/3@btc", positions: btcRegimeFilter(supertrend(c, W(10), 3), btcCloses, W(50)) });
+  }
   if (!sized) return raw;
   const sizedV: V[] = raw.map((v) => ({
     label: `${v.label}+vt`,
@@ -88,12 +96,15 @@ const minBars = Math.max(Math.round(600 * (barsPerDay > 1 ? barsPerDay / 4 : 1))
 console.log(`\nharden-priors — ${GRAN}${sized ? " +inverse-vol sizing" : ""} · PBO (C(${nBlocks},${nBlocks / 2})) + Deflated Sharpe + ${folds}-fold WF, ${feeBps}bps/turn\n`);
 console.log(`  ${"coin".padEnd(10)} ${"best".padEnd(16)} ${"PBO".padEnd(6)} ${"DSR".padEnd(6)} ${"medOOS".padEnd(8)} ${"folds(OOS)".padEnd(20)} ${"turn×".padEnd(7)} verdict`);
 
+// BTC benchmark for the regime gate (loaded once; aligned per-coin by timestamp).
+const btcBars = await loadCandles("BTC-USD").catch(() => [] as DailyCandle[]);
+
 let hardened = 0, total = 0;
 for (const coin of coins) {
   const c = await loadCandles(coin);
   if (c.length < minBars) continue;
   total++;
-  const variants = allVariants(c);
+  const variants = allVariants(c, alignClosesByTimestamp(c, btcBars));
   const vr = variants.map((v) => variantReturns(c, v.positions, feeBps));
   const T = vr[0].length;
   const M: number[][] = Array.from({ length: T }, (_, i) => vr.map((r) => r[i]));

@@ -41,6 +41,8 @@ import { governorGate } from "./gates/governor";
 import { signalAgreementGate } from "./gates/signal-agreement";
 import { classifyRegime, regimeFitScore, type Regime } from "./regime";
 import { finalizeDecision } from "./score";
+import { applyMetaLabel, type MetaLabelSizing } from "./meta-label";
+import { lookupLearnedFit, type RegimeFitTable } from "./regime-fit-table";
 import { Gate, type DecisionContext, type DecisionResult, type GateResult } from "./types";
 
 export type PipelineOptions = {
@@ -58,6 +60,21 @@ export type PipelineOptions = {
    * pipeline call goes through the governor.
    */
   skipGovernor?: boolean;
+  /**
+   * Meta-labeler (López de Prado): a trained P(win) model that TRIMS the
+   * size_multiplier of an approved decision by its learned confidence. Sizes
+   * only — never flips direction, never resurrects a rejected decision. When
+   * omitted (the default) the pipeline behaves exactly as before.
+   */
+  metaLabel?: MetaLabelSizing;
+  /**
+   * Learned regime→strategy fit table (build 6): replaces the regime gate's
+   * static fit SCORE with the empirical Beta-LCB win-rate of the (strategy_kind ×
+   * regime) cell — but ONLY for a dense, parity-clean cell; thin/missing cells,
+   * 'unknown', and the news_shock hard-reject all stay on the static rail. When
+   * omitted (the default) the regime gate behaves exactly as before.
+   */
+  regimeFitTable?: RegimeFitTable;
 };
 
 export function runDecisionPipeline(
@@ -72,8 +89,8 @@ export function runDecisionPipeline(
   // 2. Market eligibility
   gateResults.push(marketEligibilityGate(ctx, opts.marketEligibility));
 
-  // 3. Regime — classifier + match against strategy preference
-  gateResults.push(buildRegimeResult(ctx, opts.strategyRegimes ?? ["any"]));
+  // 3. Regime — classifier + match against strategy preference (+ learned fit, build 6)
+  gateResults.push(buildRegimeResult(ctx, opts.strategyRegimes ?? ["any"], opts.regimeFitTable));
 
   // 4. Signal-agreement — counts UNIQUE independent signal clusters
   //    (Phase 14). Strategies attach signals[] to proposal.metadata.
@@ -108,21 +125,26 @@ export function runDecisionPipeline(
   // 7. Execution
   gateResults.push(executionGate(ctx));
 
-  // Signal-agreement is a future v2 work item (PRD §6 — cross-strategy
-  // ensemble). For now we don't insert it; the DEFAULT_GATE_WEIGHTS map
-  // re-normalizes by present weights so the score isn't dragged down.
+  const result = finalizeDecision(gateResults, undefined, opts.nowIso ?? new Date().toISOString());
 
-  return finalizeDecision(gateResults, undefined, opts.nowIso ?? new Date().toISOString());
+  // 8. Meta-label (optional, López de Prado): a trained P(win) model trims the
+  // size_multiplier by its learned confidence. The signal-agreement gate (step 4,
+  // weight 0.15) supplies its hand-coded cluster-count score; the meta-labeler is
+  // the LEARNED replacement that sizes on top. Off unless a model is injected.
+  if (opts.metaLabel) return applyMetaLabel(result, opts.metaLabel);
+  return result;
 }
 
-/** Build the regime gate output by classifying + comparing to strategy preference. */
+/** Build the regime gate output by classifying + comparing to strategy preference,
+ *  optionally overriding the static fit score with the learned regime-fit table. */
 function buildRegimeResult(
   ctx: DecisionContext,
   strategyRegimes: readonly string[],
+  regimeFitTable?: RegimeFitTable,
 ): GateResult {
   const cls = classifyRegime(ctx.snapshot?.ticks);
   const fit = regimeFitScore(cls.regime as Regime, strategyRegimes);
-  const details = {
+  const details: Record<string, unknown> = {
     regime: cls.regime,
     confidence: cls.confidence,
     efficiency: cls.efficiency,
@@ -131,7 +153,8 @@ function buildRegimeResult(
     matched: fit.matched,
   };
 
-  // news_shock + strategy doesn't allow it → hard reject
+  // news_shock + strategy doesn't allow it → hard reject. INDEPENDENT of any learned
+  // score (safety invariant): a high-LCB learned cell can never resurrect this.
   if (cls.regime === "news_shock" && !strategyRegimes.map((s) => s.toLowerCase()).includes("news_shock")) {
     return Gate.reject(
       "regime",
@@ -140,11 +163,31 @@ function buildRegimeResult(
     );
   }
 
+  // BUILD 6: learned regime→strategy fit may only TRIM the static fit SCORE, never raise
+  // it — the pipeline's load-bearing "reduce-or-reject, never amplify" invariant. So the
+  // learned LCB is applied ONLY when it is strictly BELOW the static score; an
+  // over-confident learned cell can never up-size or resurrect a reduced/watchlist
+  // decision. `matched` (pass vs reduce branch) is unchanged; 'unknown'/thin/missing
+  // cells + out-of-vocab kinds fall back to static. When we override, record the static
+  // score for the meta-labeler leakage guard.
+  let fitScore = fit.score;
+  let metaTag = "";
+  if (regimeFitTable) {
+    const learned = lookupLearnedFit(regimeFitTable, ctx.strategyKind, cls.regime as Regime);
+    if (learned && learned.score < fit.score) {
+      details.regime_fit_static = fit.score;
+      details.regime_fit_learned = learned.score;
+      details.regime_fit_n = learned.n;
+      fitScore = learned.score;
+      metaTag = ` [meta-fit n=${learned.n}]`;
+    }
+  }
+
   if (fit.matched) {
     return Gate.pass(
       "regime",
-      fit.score,
-      `${cls.regime}: ${cls.reason} (strategy match)`,
+      fitScore,
+      `${cls.regime}: ${cls.reason} (strategy match)${metaTag}`,
       details,
     );
   }
@@ -152,8 +195,8 @@ function buildRegimeResult(
   // Mismatch — reduce, don't reject (the score modulation already penalizes)
   return Gate.reduce(
     "regime",
-    fit.score,
-    `${cls.regime} doesn't match strategy regimes ${JSON.stringify(strategyRegimes)} — ${cls.reason}`,
+    fitScore,
+    `${cls.regime} doesn't match strategy regimes ${JSON.stringify(strategyRegimes)} — ${cls.reason}${metaTag}`,
     details,
   );
 }

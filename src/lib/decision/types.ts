@@ -159,6 +159,13 @@ export type DecisionResult = {
   gate_results: GateResult[];
   /** ISO timestamp the decision was finalized. */
   decision_ts: string;
+  /** Meta-labeler P(win) for this decision, when a trained model is supplied to
+   *  the pipeline (López de Prado meta-labeling). Undefined when off. */
+  meta_pwin?: number;
+  /** The trim factor the meta-labeler applied to `size_multiplier` (∈ [floor, 1]).
+   *  Trim-only: it never raises size above the bucket, never flips direction, and
+   *  never resurrects a 0-size (REJECTED/WATCHLIST/KILL) decision. */
+  meta_size_factor?: number;
 };
 
 /** Gate-weight contract for the weighted score calculation. */

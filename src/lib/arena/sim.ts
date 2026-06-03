@@ -38,6 +38,7 @@ import type {
 } from "./types";
 import { runDecisionPipeline } from "@/lib/decision/pipeline";
 import { recordDecision } from "@/lib/decision/journal";
+import { activeRegimeFitTable } from "@/lib/decision/regime-fit-table";
 import type { DecisionContext } from "@/lib/decision/types";
 
 const CB_TAKER_FEE_BPS = 25;
@@ -80,7 +81,7 @@ function shadowGateEntry(agentId: number, kind: string, venue: string, marketId:
       snapshot,
       ts: tickAt,
     };
-    return recordDecision(ctx, runDecisionPipeline(ctx, { skipGovernor: true }));
+    return recordDecision(ctx, runDecisionPipeline(ctx, { skipGovernor: true, regimeFitTable: activeRegimeFitTable() }));
   } catch {
     return null;
   }

@@ -38,7 +38,34 @@ export type LabeledDecision = {
   /** Optional metadata for filtered views. */
   strategy_kind?: string;
   capsule_id?: string;
+  /** Classified market regime at decision time (parsed from gate_results_json) —
+   *  the (strategy × regime) ledger key for the meta-labeler. */
+  regime?: string;
+  /** Per-gate scores at decision time (gate name → score) — the meta-labeler's features. */
+  gateScores?: Record<string, number>;
+  /** Net realized PnL of the round-trip (magnitude matters for meta-label sizing). */
+  realizedPnl?: number;
 };
+
+/**
+ * The meta-labeler feature value for a journaled gate. For the regime gate, prefer
+ * the STATIC fit score (details.regime_fit_static) when build-6's learned regime-fit
+ * override was applied — so the meta-labeler never trains on the LEARNED regime score
+ * (which is itself a smoothed win-rate ⇒ target leakage). Build-6 records
+ * regime_fit_static in the regime gate details whenever it overrides; absent ⇒ use
+ * the gate's own score. Used identically by the train loader and the serve extractor
+ * to keep train/serve feature parity.
+ */
+export function metaFeatureScoreForGate(
+  gate: string,
+  score: number,
+  details?: Record<string, unknown>,
+): number {
+  if (gate === "regime" && details && typeof details.regime_fit_static === "number") {
+    return details.regime_fit_static;
+  }
+  return score;
+}
 
 export type CalibrationBucket = {
   /** Inclusive lower bound. */

@@ -20,8 +20,24 @@ import { insertEvolutionEvent } from "@/lib/db/queries";
 import { getBinaryMeta } from "./short-binaries";
 import { runDecisionPipeline } from "@/lib/decision/pipeline";
 import { recordDecision } from "@/lib/decision/journal";
+import { loadMetaModel } from "@/lib/decision/meta-label-store";
+import { activeRegimeFitTable } from "@/lib/decision/regime-fit-table";
+import type { MetaLabelSizing } from "@/lib/decision/meta-label";
 import type { DecisionContext } from "@/lib/decision/types";
 import type { Position, Signal } from "./types";
+
+// Meta-label sizing (trim-only) is opt-in via META_LABEL_SIZING=1 + a trained
+// model at data/meta-label-model.json (npm run train:metalabel). Loaded once,
+// lazily; absent/empty model ⇒ disabled (no behaviour change).
+let _metaSizing: MetaLabelSizing | null | undefined;
+function metaLabelSizing(): MetaLabelSizing | undefined {
+  if (process.env.META_LABEL_SIZING !== "1") return undefined;
+  if (_metaSizing === undefined) {
+    const model = loadMetaModel();
+    _metaSizing = model && model.n > 0 ? { model } : null;
+  }
+  return _metaSizing ?? undefined;
+}
 
 export type LiveCapsuleBinding = {
   id: string;
@@ -251,10 +267,13 @@ export async function routeArenaSignal(
           conditionId: order.symbol,
           metadata: order.metadata,
         },
-        snapshot: undefined, // no snapshot at this layer in v1; regime gate will return 'unknown' and score 0.7
+        snapshot: undefined, // no snapshot at this layer in v1; regime gate returns 'unknown' (static 0.7).
+                             // NOTE: with regime='unknown', the regime-fit table never overrides (static rail)
+                             // AND meta-label sizing fail-safes to a no-op (OOD vs the trained regimes). To
+                             // actually use the learned layers live, v2 must feed a real snapshot here.
         ts: new Date().toISOString(),
       };
-      const decisionResult = runDecisionPipeline(decisionCtx);
+      const decisionResult = runDecisionPipeline(decisionCtx, { metaLabel: metaLabelSizing(), regimeFitTable: activeRegimeFitTable() });
       recordDecision(decisionCtx, decisionResult);
 
       // ─── ACTIVE ENFORCEMENT ────────────────────────────────────────────
@@ -274,8 +293,13 @@ export async function routeArenaSignal(
         if (decisionResult.decision === "WATCHLIST") {
           return { ok: false, code: "DECISION_WATCHLIST", reason: `decision pipeline → watchlist only (score ${decisionResult.approval_score.toFixed(2)}) — no live submit` };
         }
-        // APPROVED_REDUCED → clamp size by size_multiplier. APPROVED_FULL falls through.
-        if (decisionResult.decision === "APPROVED_REDUCED" && decisionResult.size_multiplier < 1) {
+        // Clamp size by size_multiplier for any APPROVED decision whose multiplier
+        // is below 1 — APPROVED_REDUCED (bucket), or APPROVED_FULL that the
+        // meta-labeler trimmed (size_multiplier < 1 via meta_size_factor).
+        if (
+          (decisionResult.decision === "APPROVED_REDUCED" || decisionResult.decision === "APPROVED_FULL") &&
+          decisionResult.size_multiplier < 1
+        ) {
           const newSize = order.size * decisionResult.size_multiplier;
           if (newSize <= 0) {
             return { ok: false, code: "DECISION_REJECTED", reason: `size_multiplier ${decisionResult.size_multiplier} would zero the order` };

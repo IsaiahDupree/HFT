@@ -27,11 +27,21 @@ export async function closeTsdb(): Promise<void> {
 
 export type CandleRow = { start_unix: number; open: number; high: number; low: number; close: number; volume: number };
 
+// Upper bound (unix seconds, ≈ 2033-05-18) inlined as a LITERAL into the scanning queries.
+// It serves two purposes: (1) PERF — without a time predicate the planner enumerates EVERY
+// hypertable chunk (5.7k+ here → ~22s planning per query); a constant bound enables plan-time
+// chunk exclusion (→ ~0.5s). (2) CORRECTNESS — a buggy ingest stored some ms-as-seconds
+// timestamps (year 58384), spawning thousands of far-future garbage chunks; this bound keeps
+// those corrupt rows out of both the planner and the backtests. All real crypto candles are
+// well before 2033, so this never excludes valid data.
+const MAX_VALID_START_UNIX = 2_000_000_000;
+
 /** All candles for a product+granularity, ascending by time (backtest order). */
 export async function getCandles(product: string, granularity: string): Promise<DailyCandle[]> {
   const r = await tsdb().query(
     `SELECT start_unix, open, high, low, close, volume FROM coinbase_candles
-       WHERE product_id = $1 AND granularity = $2 ORDER BY start_unix ASC`,
+       WHERE product_id = $1 AND granularity = $2 AND start_unix < ${MAX_VALID_START_UNIX}
+       ORDER BY start_unix ASC`,
     [product, granularity],
   );
   // bigint comes back as a string; doubles as numbers.
@@ -44,7 +54,7 @@ export async function getCandles(product: string, granularity: string): Promise<
 /** Distinct products that have candles at this granularity, sorted. */
 export async function listProducts(granularity: string): Promise<string[]> {
   const r = await tsdb().query(
-    `SELECT DISTINCT product_id FROM coinbase_candles WHERE granularity = $1 ORDER BY product_id`,
+    `SELECT DISTINCT product_id FROM coinbase_candles WHERE granularity = $1 AND start_unix < ${MAX_VALID_START_UNIX} ORDER BY product_id`,
     [granularity],
   );
   return r.rows.map((x) => x.product_id as string);
@@ -54,7 +64,7 @@ export async function listProducts(granularity: string): Promise<string[]> {
 export async function candleRange(product: string, granularity: string): Promise<{ n: number; mn: number | null; mx: number | null }> {
   const r = await tsdb().query(
     `SELECT COUNT(*)::int n, MIN(start_unix) mn, MAX(start_unix) mx
-       FROM coinbase_candles WHERE product_id = $1 AND granularity = $2`,
+       FROM coinbase_candles WHERE product_id = $1 AND granularity = $2 AND start_unix < ${MAX_VALID_START_UNIX}`,
     [product, granularity],
   );
   const row = r.rows[0];

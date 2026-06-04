@@ -125,6 +125,7 @@
     "fetch:funding": "tsx scripts/fetch-funding.ts",
     "data:cross-venue": "tsx scripts/cross-venue-check.ts",
     "analyze:regime": "tsx scripts/regime-analysis.ts",
+    "backfill:usdt": "tsx scripts/backfill-usdt.ts",
     "test:trend-defensive": "tsx scripts/trend-defensive-test.ts",
     "meta:allocate": "tsx scripts/meta-allocate.ts",
     "load:binance": "tsx scripts/load-binance-history.ts"

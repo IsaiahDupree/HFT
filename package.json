@@ -130,7 +130,9 @@
     "meta:allocate": "tsx scripts/meta-allocate.ts",
     "load:binance": "tsx scripts/load-binance-history.ts",
     "probe:binance-proxy": "tsx scripts/probe-binance-proxy.ts",
-    "analyze:lead-lag": "tsx scripts/lead-lag-check.ts"
+    "analyze:lead-lag": "tsx scripts/lead-lag-check.ts",
+    "probe:ws": "tsx scripts/probe-ws.ts",
+    "analyze:ws-leadlag": "tsx scripts/ws-leadlag-capture.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

@@ -7,6 +7,34 @@
  * feed to trust for price discovery.)
  */
 
+export type Tick = { ts: number; price: number };
+
+/**
+ * Resample irregular ticks onto a uniform grid: out[k] = last price with ts < t0+(k+1)*bucketMs
+ * ("price as known by the end of bucket k"), forward-filled; NaN for buckets before the first
+ * tick. Two venues resampled with the SAME (bucketMs, t0, t1) are aligned bar-for-bar, so their
+ * returns can be cross-correlated. Use EXCHANGE timestamps (not local receive) to avoid network/
+ * proxy-latency bias when measuring which venue's price moves first.
+ */
+export function resampleLastPrice(ticks: readonly Tick[], bucketMs: number, t0: number, t1: number): number[] {
+  const sorted = [...ticks].sort((a, b) => a.ts - b.ts);
+  const out: number[] = [];
+  let j = 0, last = NaN;
+  for (let t = t0; t <= t1; t += bucketMs) {
+    const end = t + bucketMs;
+    while (j < sorted.length && sorted[j].ts < end) { last = sorted[j].price; j++; }
+    out.push(last);
+  }
+  return out;
+}
+
+/** Drop the leading buckets where EITHER series is still NaN (before both venues had a tick). */
+export function trimToCommon(a: number[], b: number[]): { a: number[]; b: number[] } {
+  let start = 0;
+  while (start < a.length && (!Number.isFinite(a[start]) || !Number.isFinite(b[start]))) start++;
+  return { a: a.slice(start), b: b.slice(start) };
+}
+
 /** Pearson correlation of two equal-length series. 0 if either is constant or lengths differ. */
 export function pearson(a: readonly number[], b: readonly number[]): number {
   const n = Math.min(a.length, b.length);

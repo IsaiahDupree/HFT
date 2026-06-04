@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pearson, toReturns, crossCorrelation, leadLag } from "@/lib/data/lead-lag";
+import { pearson, toReturns, crossCorrelation, leadLag, resampleLastPrice, trimToCommon } from "@/lib/data/lead-lag";
 
 function lcg(seed: number): () => number {
   let s = seed >>> 0;
@@ -26,6 +26,29 @@ describe("toReturns", () => {
   });
   it("guards non-positive prior prices", () => {
     expect(toReturns([0, 100])).toEqual([0]);
+  });
+});
+
+describe("resampleLastPrice + trimToCommon", () => {
+  it("takes the last price known by the end of each bucket, forward-filling", () => {
+    const ticks = [{ ts: 0, price: 100 }, { ts: 300, price: 110 }, { ts: 700, price: 120 }];
+    // buckets end at 500, 1000, 1500 → [110, 120, 120]
+    expect(resampleLastPrice(ticks, 500, 0, 1000)).toEqual([110, 120, 120]);
+  });
+  it("is NaN for buckets before the first tick", () => {
+    const out = resampleLastPrice([{ ts: 600, price: 50 }], 500, 0, 1000);
+    expect(Number.isNaN(out[0])).toBe(true);
+    expect(out[1]).toBe(50);
+  });
+  it("two venues on the same grid are aligned bar-for-bar", () => {
+    const a = resampleLastPrice([{ ts: 10, price: 100 }, { ts: 510, price: 101 }], 500, 0, 1000);
+    const b = resampleLastPrice([{ ts: 20, price: 200 }, { ts: 520, price: 202 }], 500, 0, 1000);
+    expect(a).toHaveLength(b.length);
+  });
+  it("trimToCommon drops leading buckets where either series is NaN", () => {
+    const { a, b } = trimToCommon([NaN, NaN, 1, 2], [NaN, 5, 6, 7]);
+    expect(a).toEqual([1, 2]);
+    expect(b).toEqual([6, 7]);
   });
 });
 

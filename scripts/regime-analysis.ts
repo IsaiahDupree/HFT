@@ -17,6 +17,8 @@ import {
   regimeConditionalAlpha, candidateConditionalEdges, multipleTestingReport, type ConditionalAlpha,
 } from "../src/lib/backtest/candle/regime.ts";
 import { selectUniverse, universeHealth } from "../src/lib/backtest/candle/universe.ts";
+import { sharpe } from "../src/lib/backtest/candle/stats.ts";
+import { adviseTrade, renderTradeMemo } from "../src/lib/backtest/advisor.ts";
 
 const num = (name: string, def: number): number => {
   const i = process.argv.indexOf(name);
@@ -118,5 +120,15 @@ console.log(`    (${trendDef}/${defensive.length} are the equal-weight TREND por
 
 console.log(`\n  BOTTOM LINE: ${report.survivors.length === 0 ? "no cell is individually significant after correction" : `${report.survivors.length} cell(s) survive correction`}; the robust, economically-sensible signal is`);
 console.log(`  trend-following's DEFENSIVE behavior (positive when beta is negative), not a tradeable per-regime alpha. Next: pre-register ONE`);
-console.log(`  hypothesis (trend portfolio as a beta-diversifier in bear/low-vol) and test it on a longer / out-of-universe sample — don't scan.\n`);
+console.log(`  hypothesis (trend portfolio as a beta-diversifier in bear/low-vol) and test it on a longer / out-of-universe sample — don't scan.`);
+
+// One-voice verdict on the BEST strategy this scan surfaced — passing the REAL search width
+// (hypotheses scanned + Bonferroni survivors) so a scanned "edge" is correctly downgraded.
+const best = strategies.reduce((b, s) => (sharpe(s.rets) > sharpe(b.rets) ? s : b), strategies[0]);
+console.log("\n" + renderTradeMemo(adviseTrade({
+  label: `${best.label} (best of scan)`,
+  strategyReturns: best.rets, benchmarkReturns: beta, oosFrac,
+  data: { spliceSuspected: health.spliceSuspected },
+  search: { hypothesesScanned: report.nHypotheses, bonferroniSurvivors: report.survivors.length },
+})) + "\n");
 await closeTsdb();

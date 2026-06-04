@@ -67,6 +67,16 @@ describe("adviseTrade — one voice over bull + bear", () => {
     expect(m.voice).toMatch(/beta isn't even attractive|nothing here is worth owning/);
   });
 
+  it("does NOT call it alpha when the strategy beats a worse benchmark but is itself net-negative OOS", () => {
+    const beta = noise(400, 30, -0.004, 0.006);                   // benchmark loses badly (low noise)
+    const strat = beta.map((x, i) => x + 0.0015 + (lcg(31 + i)() - 0.5) * 0.001); // loses less, still clearly negative
+    const m = adviseTrade({ label: "carry", strategyReturns: strat, benchmarkReturns: beta, betaAttractive: false });
+    expect(["STAND_ASIDE", "HOLD_BETA"]).toContain(m.recommendation);
+    expect(m.bull.some((s) => /genuine alpha/.test(s))).toBe(false);
+    expect(m.bear.some((s) => /net-negative out-of-sample/.test(s))).toBe(true);
+    expect(m.advice.metrics.strategySharpeOos).toBeLessThan(0);
+  });
+
   it("STAND_ASIDE on an artifact-concentrated return", () => {
     const strat = new Array(300).fill(0.0001); strat[10] = 2; strat[20] = 2; strat[30] = 2;
     const m = adviseTrade({ label: "spike", strategyReturns: strat, benchmarkReturns: noise(300, 3, 0.0005) });

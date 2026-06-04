@@ -34,7 +34,7 @@ export type TradeAdvice = {
   truth: string[];    // what the ROI really is / honest caveats
   metrics: {
     bars: number; strategyCumPct: number; betaCumPct: number;
-    strategySharpe: number; betaSharpe: number;
+    strategySharpe: number; betaSharpe: number; strategySharpeOos: number;
     alphaSharpeFull: number; alphaSharpeOos: number; topBarShare: number;
     pbo?: number; dsr?: number;
   };
@@ -64,9 +64,10 @@ export function tradeAdvocate(c: TradeCase, thr: AdvocateThresholds = DEFAULT_AD
   const g = s.map((x) => Math.log(1 + Math.max(-0.99, x)));
   const totalG = g.reduce((a, x) => a + x, 0);
   const topBarShare = totalG > 0 ? [...g].sort((a, x) => x - a).slice(0, thr.artifactTopBars).reduce((a, x) => a + x, 0) / totalG : 0;
+  const sOosSh = ann(sharpe(s.slice(split)));
   const metrics = {
     bars: n, strategyCumPct: sCum, betaCumPct: bCum, strategySharpe: sSh, betaSharpe: bSh,
-    alphaSharpeFull: alphaFull, alphaSharpeOos: alphaOos, topBarShare, pbo: c.pbo, dsr: c.dsr,
+    strategySharpeOos: sOosSh, alphaSharpeFull: alphaFull, alphaSharpeOos: alphaOos, topBarShare, pbo: c.pbo, dsr: c.dsr,
   };
 
   const advocate: string[] = [], truth: string[] = [];

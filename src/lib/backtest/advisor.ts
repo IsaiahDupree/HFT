@@ -63,8 +63,12 @@ export function adviseTrade(input: AdvisorInput, thr: AdvocateThresholds = DEFAU
   const bear: string[] = [];
   let conviction = 50;
 
+  // A strategy that beats its benchmark but is itself NET-NEGATIVE out-of-sample isn't alpha —
+  // it's loss-minimization vs a poor benchmark ("wins by losing less"). Never a reason to buy.
+  const additive = m.strategySharpeOos > 0;
+
   // ---- BULL: why buy / why trade ----
-  if (m.alphaSharpeOos > 0 && advice.roiVerdict === "real_edge") { bull.push(`genuine alpha over beta out-of-sample (excess Sharpe ${m.alphaSharpeOos.toFixed(2)})`); conviction += 22; }
+  if (m.alphaSharpeOos > 0 && advice.roiVerdict === "real_edge" && additive) { bull.push(`genuine alpha over beta out-of-sample (excess Sharpe ${m.alphaSharpeOos.toFixed(2)})`); conviction += 22; }
   if (input.pbo != null && input.pbo < thr.pboClean) { bull.push(`low overfit (PBO ${input.pbo.toFixed(2)} < ${thr.pboClean})`); conviction += 10; }
   if (input.dsr != null && input.dsr > thr.dsrClean) { bull.push(`survives multiple-testing deflation (DSR ${input.dsr.toFixed(2)})`); conviction += 10; }
   if (survivors > 0) { bull.push(`${survivors} cell(s) cleared the Bonferroni bar`); conviction += 14; }
@@ -91,6 +95,12 @@ export function adviseTrade(input: AdvisorInput, thr: AdvocateThresholds = DEFAU
     decisive = dataBroken
       ? "I can't make a call on a benchmark that changes composition mid-sample — fix the data first."
       : "the numbers aren't trustworthy enough to act on; this is a data problem, not a trade.";
+  } else if (advice.roiVerdict === "real_edge" && !additive) {
+    // beats the benchmark but loses money itself OOS → defensive, not a buy.
+    bear.push(`the strategy is itself net-negative out-of-sample (Sharpe ${m.strategySharpeOos.toFixed(2)}) — it only beats the benchmark by losing LESS, that's defensive, not additive`);
+    conviction -= 20;
+    recommendation = betaAttractive ? "HOLD_BETA" : "STAND_ASIDE";
+    decisive = "it 'beats beta' only because the benchmark is worse — the strategy still loses money out-of-sample, so there's no reason to put capital in it.";
   } else if (advice.roiVerdict === "real_edge") {
     const robust = (input.pbo == null || input.pbo < thr.pboClean) && (input.dsr == null || input.dsr > thr.dsrClean) && advice.recommendation === "TRADE";
     const scanClean = scanned === 0 || survivors > 0;

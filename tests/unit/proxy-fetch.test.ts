@@ -1,9 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { proxiedHosts, willProxy, dataProxyStatus, DEFAULT_PROXIED_HOSTS, _resetDataProxyAgentForTests } from "@/lib/data/proxy-fetch";
 
-const SAVE = { ...process.env };
-beforeEach(() => { _resetDataProxyAgentForTests(); delete process.env.DATA_PROXY_URL; delete process.env.POLYMARKET_PROXY_URL; delete process.env.DATA_PROXY_HOSTS; });
-afterEach(() => { process.env = { ...SAVE }; });
+// Save/restore ONLY the keys this file touches — never reassign process.env wholesale
+// (that can race other test files that read env in the same worker).
+const KEYS = ["DATA_PROXY_URL", "POLYMARKET_PROXY_URL", "DATA_PROXY_HOSTS"] as const;
+const SAVE: Record<string, string | undefined> = {};
+beforeEach(() => {
+  _resetDataProxyAgentForTests();
+  for (const k of KEYS) { SAVE[k] = process.env[k]; delete process.env[k]; }
+});
+afterEach(() => {
+  for (const k of KEYS) { if (SAVE[k] === undefined) delete process.env[k]; else process.env[k] = SAVE[k]; }
+  _resetDataProxyAgentForTests();
+});
 
 describe("proxy-fetch host routing — properties", () => {
   it("DEFAULT_PROXIED_HOSTS covers Binance spot + futures", () => {

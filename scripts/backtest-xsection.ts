@@ -11,7 +11,9 @@ import "./_env.ts";
 import { listProducts, getCandles, closeTsdb } from "../src/lib/db/candle-store.ts";
 import { sharpe, deflatedSharpe, pbo } from "../src/lib/backtest/candle/stats.ts";
 import { buildPriceSeries, defaultXSectionVariants, xsectionReturns } from "../src/lib/backtest/candle/xsection.ts";
+import { equalWeightBuyHoldReturns } from "../src/lib/backtest/candle/cross-asset.ts";
 import { proofCouncil, renderProofCouncil } from "../src/lib/backtest/proof-council.ts";
+import { adviseTrade, renderTradeMemo } from "../src/lib/backtest/advisor.ts";
 
 const arg = (name: string, def: number): number => {
   const i = process.argv.indexOf(name);
@@ -73,5 +75,16 @@ console.log("\n" + renderProofCouncil(proofCouncil({
   oosSharpeAnn: ann(sharpe(series[momBest].slice(split))), fullSharpeAnn: ann(fullSh[momBest]),
   oosHold, variants: momIdx.length, pbo: PBO, dsr: momDsr.dsr,
   cumPnlPct: cum(series[momBest]) * 100,
+})) + "\n");
+
+// One voice — the long/short xsection strategy vs equal-weight buy-and-hold (is the neutral
+// book real alpha over just owning the basket?). Scan width = the momentum variant grid.
+const beta = equalWeightBuyHoldReturns(coins, data, days, maxL);
+const L = Math.min(series[momBest].length, beta.length);
+console.log(renderTradeMemo(adviseTrade({
+  label: `xsection ${variants[momBest].label}`,
+  strategyReturns: series[momBest].slice(0, L), benchmarkReturns: beta.slice(0, L),
+  pbo: PBO, dsr: momDsr.dsr, oosFrac: 0.3,
+  search: { hypothesesScanned: variants.length, bonferroniSurvivors: 0 },
 })) + "\n");
 await closeTsdb();

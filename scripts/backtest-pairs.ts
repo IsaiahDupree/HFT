@@ -11,7 +11,9 @@ import { listProducts, getCandles, closeTsdb } from "../src/lib/db/candle-store.
 import { sharpe, deflatedSharpe, pbo } from "../src/lib/backtest/candle/stats.ts";
 import { buildPriceSeries } from "../src/lib/backtest/candle/xsection.ts";
 import { allPairs, defaultPairsVariants, pairsVariantSeries } from "../src/lib/backtest/candle/pairs.ts";
+import { equalWeightBuyHoldReturns } from "../src/lib/backtest/candle/cross-asset.ts";
 import { proofCouncil, renderProofCouncil } from "../src/lib/backtest/proof-council.ts";
+import { adviseTrade, renderTradeMemo } from "../src/lib/backtest/advisor.ts";
 
 const arg = (name: string, def: number): number => {
   const i = process.argv.indexOf(name);
@@ -59,5 +61,16 @@ console.log("\n" + renderProofCouncil(proofCouncil({
   oosSharpeAnn: ann(oosSh), fullSharpeAnn: ann(fullSh[isBest]),
   oosHold, variants: variants.length, pbo: PBO, dsr: deflatedSharpe(series[isBest], fullSh).dsr,
   cumPnlPct: cum(series[isBest]) * 100,
+})) + "\n");
+
+// One voice — the market-neutral spread book vs equal-weight buy-and-hold (does mean-reversion
+// add alpha over owning the basket?).
+const beta = equalWeightBuyHoldReturns(coins, data, days, maxW);
+const L = Math.min(series[isBest].length, beta.length);
+console.log(renderTradeMemo(adviseTrade({
+  label: `pairs ${variants[isBest].label}`,
+  strategyReturns: series[isBest].slice(0, L), benchmarkReturns: beta.slice(0, L),
+  pbo: PBO, dsr: deflatedSharpe(series[isBest], fullSh).dsr, oosFrac: 0.3,
+  search: { hypothesesScanned: variants.length, bonferroniSurvivors: 0 },
 })) + "\n");
 await closeTsdb();

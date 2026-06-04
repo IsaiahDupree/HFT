@@ -180,6 +180,42 @@ data underneath it before believing anything.**
 
 ---
 
+## 6. Which source is ahead? Cross-venue agreement + lead-lag (2026-06-04)
+
+After unlocking the **full Binance API** (geo-block bypass: the repo's existing Webshare proxy,
+`src/lib/polymarket/proxy-routing.ts`, generalized to data venues in `src/lib/data/proxy-fetch.ts`
++ `binance.ts` — funding rates included), we asked which venue leads on price.
+
+**The "13% gap" was a red herring** — a date misalignment (Coinbase 05-31 vs Binance 06-03). On
+matched timestamps (`npm run analyze:lead-lag`, minute candles):
+
+| Pair | Median divergence | Verdict |
+|---|---|---|
+| Coinbase ↔ Binance | **15 bps** (the USDT/USD basis) | agree |
+| Coinbase ↔ Kraken | **1.6 bps** | agree |
+
+So the mirror-sourced USDT backfill is validated, and minute lead-lag is **synchronous** (lag 0,
+corr 0.96) — venues sync within a minute, so the real lead is sub-second.
+
+**Sub-second answer (`npm run analyze:ws-leadlag`, live WS ticks)** — Coinbase direct vs Binance
+through the proxy, cross-correlating returns on 200–250ms buckets, two runs:
+
+| Clock | Run 1 (90s) | Run 2 (120s) |
+|---|---|---|
+| Exchange-time (true) | **Binance leads 400ms** | **Binance leads 500ms** |
+| Receive-time (proxy-biased) | Binance leads 200ms | Binance leads 250ms |
+
+**Binance leads Coinbase** — robustly, on both clocks and both runs. The receive-clock figure is a
+*conservative lower bound*: Binance leads even though the proxy ADDS latency to its path, so the
+true market lead is larger (the exchange-clock ~400–500ms). This matches the well-documented
+reality that **Binance is the dominant BTC price-discovery venue; Coinbase follows.**
+
+Caveat / honesty: lead-lag is descriptive, not directly tradeable — a venue you can't reach
+faster than your own latency (here, *plus* a proxy hop) is not an executable edge. It tells you
+which feed to trust for price *discovery* (Binance) and which is downstream (Coinbase).
+
+---
+
 ## Files / commands
 
 | Path | What |

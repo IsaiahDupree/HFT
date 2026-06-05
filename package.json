@@ -145,7 +145,8 @@
     "carry:maker-fill": "tsx scripts/maker-fill-carry.ts",
     "backtest:calendar-basis": "tsx scripts/backtest-calendar-basis.ts",
     "backtest:xsection-carry": "tsx scripts/backtest-xsection-funding-carry.ts",
-    "backtest:carry-regime": "tsx scripts/backtest-carry-regime.ts"
+    "backtest:carry-regime": "tsx scripts/backtest-carry-regime.ts",
+    "backtest:cross-edge": "tsx scripts/backtest-cross-edge.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

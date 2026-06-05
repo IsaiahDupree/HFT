@@ -27,18 +27,35 @@
  * window so we can answer "does staking yield ADD to plain funding carry?" — the task's explicit test.
  *
  *   npx tsx scripts/_carry-staking-hedged-yield.ts [--fee-bps 1] [--entry-bps 5] [--hedge-bps-yr 0]
+ *     [--unbond-bps-yr 0] [--slashing-bps-yr 0] [--depeg-bps-yr 0] [--stress-bps-yr 20]
  */
 import "./_env.ts";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { sharpe, deflatedSharpe, pbo } from "../src/lib/backtest/candle/stats.ts";
 import { adviseTrade, renderTradeMemo } from "../src/lib/backtest/advisor.ts";
+import {
+  stakingHedgedReturns as libStakingHedgedReturns,
+  plainFundingReturns as libPlainFundingReturns,
+  feeRobustness,
+  totalRiskHaircutYr,
+  type RiskHaircut,
+} from "../src/lib/exec/staking-hedged.ts";
 
 const DAY = 86_400;
+const PERIODS_PER_YEAR = 365;
 const arg = (n: string, def: number): number => { const i = process.argv.indexOf(n); return i >= 0 && process.argv[i + 1] != null ? Number(process.argv[i + 1]) : def; };
 const feeBps = arg("--fee-bps", 1);          // per-leg cost when the hedge rebalances (~static here, so ~0 turnover)
 const entryBps = arg("--entry-bps", 5);      // one-time round-trip entry cost (2 legs), reported amortized
 const hedgeBpsYr = arg("--hedge-bps-yr", 0); // extra continuous hedge drag in bps/yr (0: funding already captures perp cost)
+
+// The OMITTED-RISK haircut — explicit annual penalties for the tail risks the headline yield hides.
+const risk: RiskHaircut = {
+  unbondBpsYr: arg("--unbond-bps-yr", 0),     // unbond/exit-queue illiquidity (hedge can drift naked)
+  slashingBpsYr: arg("--slashing-bps-yr", 0), // expected annual slashing loss
+  depegBpsYr: arg("--depeg-bps-yr", 0),       // LST depeg mark-to-market drag
+};
+const stressBpsYr = arg("--stress-bps-yr", 20); // fee-robustness: survive this much EXTRA annual cost?
 
 // Stable protocol staking yields (annual), per the edge spec.
 const STAKING_YIELD_YR: Record<string, number> = { ETH: 0.032, SOL: 0.07 };
@@ -68,36 +85,26 @@ function dailyFunding(funding: FundingRow[]): { days: number[]; rate: number[] }
   return { days, rate: days.map((d) => byDay.get(d)!) };
 }
 
-/**
- * Build the delta-neutral STAKING-HEDGED daily returns, NO-LOOKAHEAD. Day i: the static hedge is
- * already on (decided ≤ i), so we EARN stakingYieldPerDay and the short COLLECTS dailyFunding[i]
- * (positive funding → income, negative → cost), minus a small continuous hedge drag. The price legs
- * cancel (delta-neutral) so no price term. We realize day i (the rate observed at i is the rate that
- * settles over i, the standard funding convention) — there is no i→i+1 price move to time, so the only
- * lookahead risk is using a FUTURE funding print, which we avoid by using each day's OWN settled prints.
- */
+/** Delta-neutral STAKING-HEDGED daily returns, NO-LOOKAHEAD (lib does the arithmetic + risk haircut). */
 function stakingHedgedReturns(coin: string, dailyRate: number[]): number[] {
-  const yld = (STAKING_YIELD_YR[coin] ?? 0) / 365;
-  const hedgeDrag = (hedgeBpsYr / 1e4) / 365;
-  // The hedge is static: charge the round-trip ONCE (first day), then ~0 turnover after.
-  return dailyRate.map((f, i) => {
-    const fundingCollected = f;                 // short receives +funding, pays −funding
-    const entry = i === 0 ? (entryBps / 1e4) : 0;
-    return yld + fundingCollected - hedgeDrag - entry;
+  return libStakingHedgedReturns(dailyRate, {
+    stakeApy: STAKING_YIELD_YR[coin] ?? 0,
+    hedgeBpsYr, entryBps, periodsPerYear: PERIODS_PER_YEAR, risk,
   });
 }
 
-/** CONTROL: plain funding carry — short-only, NO staking yield (same static hedge, funding cash flow only). */
+/** CONTROL: plain funding carry — short-only, NO staking yield, NO staking-specific haircut. */
 function plainFundingReturns(dailyRate: number[]): number[] {
-  const hedgeDrag = (hedgeBpsYr / 1e4) / 365;
-  return dailyRate.map((f, i) => f - hedgeDrag - (i === 0 ? entryBps / 1e4 : 0));
+  return libPlainFundingReturns(dailyRate, { hedgeBpsYr, entryBps, periodsPerYear: PERIODS_PER_YEAR });
 }
 
+const haircutPct = totalRiskHaircutYr(risk) * 100;
 console.log(`\n=== STAKING-HEDGED YIELD CARRY (delta-neutral) ===`);
 console.log(`fees: entry ${entryBps}bps round-trip, hedge drag ${hedgeBpsYr}bps/yr, rebalance ${feeBps}bps (static hold ⇒ ~0 turnover)`);
+console.log(`omitted-risk haircut: ${haircutPct.toFixed(2)}%/yr (unbond ${risk.unbondBpsYr}bps, slashing ${risk.slashingBpsYr}bps, depeg ${risk.depegBpsYr}bps)`);
 console.log(`staking yields: ${COINS.map((c) => `${c} ${(STAKING_YIELD_YR[c] * 100).toFixed(1)}%/yr`).join(", ")}\n`);
 
-type CoinResult = { coin: string; days: number[]; staked: number[]; plain: number[]; fundingApr: number; nDays: number };
+type CoinResult = { coin: string; days: number[]; rate: number[]; staked: number[]; plain: number[]; fundingApr: number; nDays: number };
 const results: CoinResult[] = [];
 
 for (const coin of COINS) {
@@ -108,7 +115,7 @@ for (const coin of COINS) {
   const staked = stakingHedgedReturns(coin, rate);
   const plain = plainFundingReturns(rate);
   const fundingApr = mean(rate) * 365; // mean daily funding annualized
-  results.push({ coin, days, staked, plain, fundingApr, nDays: days.length });
+  results.push({ coin, days, rate, staked, plain, fundingApr, nDays: days.length });
 
   const sStaked = sum(staked), sPlain = sum(plain);
   const shStaked = annualize(sharpe(staked)), shPlain = annualize(sharpe(plain));
@@ -162,6 +169,14 @@ console.log(`  STAKED-HEDGED: cum ${(cum(pStaked) * 100).toFixed(2)}%  → APR $
 console.log(`  PLAIN FUNDING: cum ${(cum(pPlain) * 100).toFixed(2)}%  → APR ${(aprOf(pPlain) * 100).toFixed(2)}%  ann.Sharpe ${shPlain.toFixed(2)}`);
 console.log(`  STAKING ADDS:  +${((aprOf(pStaked) - aprOf(pPlain)) * 100).toFixed(2)}% APR, Sharpe ${shStaked.toFixed(2)} vs ${shPlain.toFixed(2)}`);
 console.log(`  BEATS PLAIN FUNDING CARRY? ${shStaked > shPlain ? "YES" : "NO"} (Sharpe) / ${aprOf(pStaked) > aprOf(pPlain) ? "YES" : "NO"} (APR)`);
+
+// FEE-ROBUSTNESS: does each coin's staking-hedged carry still clear 0% APR after `stressBpsYr` extra cost?
+const robustness = results.map((r) => ({
+  coin: r.coin,
+  fr: feeRobustness(r.rate, { stakeApy: STAKING_YIELD_YR[r.coin] ?? 0, hedgeBpsYr, entryBps, periodsPerYear: PERIODS_PER_YEAR, risk }, stressBpsYr, 0),
+}));
+const allSurvive = robustness.every((x) => x.fr.survives);
+console.log(`  FEE-ROBUST (+${stressBpsYr}bps/yr stress, floor 0% APR): ${robustness.map((x) => `${x.coin} ${x.fr.survives ? "✓" : "✗"} (${x.fr.stressAprNet >= 0 ? "+" : ""}${(x.fr.stressAprNet * 100).toFixed(2)}%)`).join(", ")} → ${allSurvive ? "ALL SURVIVE" : "SOME FAIL"}`);
 console.log(`\n  GAUNTLET:  ann.Sharpe ${shStaked.toFixed(2)} | PBO ${pboVal.toFixed(2)} | DSR ${dsr.toFixed(3)} (SR ${sr.toFixed(3)} vs SR0 ${sr0.toFixed(3)})\n`);
 
 // ---- ADVISOR (benchmark = CASH) ----
@@ -187,6 +202,9 @@ console.log(`\nRESULT_JSON ${JSON.stringify({
   pbo: Number(pboVal.toFixed(3)),
   dsr: Number(dsr.toFixed(3)),
   days: allDays.length,
+  riskHaircutPct: Number(haircutPct.toFixed(3)),
+  stressBpsYr,
+  feeRobustAllSurvive: allSurvive,
   recommendation: memo.recommendation,
   conviction: memo.conviction,
 })}`);

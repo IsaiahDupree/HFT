@@ -37,12 +37,22 @@
  */
 import "./_env.ts";
 import { proxiedFetch } from "../src/lib/data/proxy-fetch.ts";
-import { realizedVol } from "../src/lib/backtest/candle/indicators.ts";
 import { sharpe, deflatedSharpe, pbo } from "../src/lib/backtest/candle/stats.ts";
 import { adviseTrade, renderTradeMemo } from "../src/lib/backtest/advisor.ts";
 import { lcgRng, blockShufflePermutation, applyPermutation, permutationTest } from "../src/lib/backtest/shuffle-control.ts";
+// Edge #3 core math extracted to a pure, unit-tested lib (see tests/unit/vrp-coverage.test.ts).
+import {
+  vrpPremium,
+  realizedVolOverWindow,
+  trailingRealizedVol,
+  shortVolPnl,
+  nonOverlappingPnl,
+  nonOverlapAnnualizedSharpe,
+  tailStats,
+  VRP_DEFAULT_ANN,
+} from "../src/lib/exec/vol-risk-premium.ts";
 
-const ANN = Math.sqrt(365);
+const ANN = VRP_DEFAULT_ANN; // √365, shared with the extracted lib
 const DAY_MS = 86_400_000;
 const dayIdx = (ms: number) => Math.floor(Number(ms) / DAY_MS);
 
@@ -99,25 +109,17 @@ console.log(`  aligned days: ${days.length}  (${new Date(days[0] * DAY_MS).toISO
 // FORWARD realized vol over the next 30 days (annualized) vs IV at the same day — pure descriptive
 // stat (uses future data, MEASUREMENT ONLY, never feeds a position). Tells us if the premium exists.
 const FWD = 30;
-const fwdRV: number[] = days.map((_, i) => {
-  if (i + FWD >= logret.length) return NaN;
-  const win = logret.slice(i + 1, i + 1 + FWD);
-  const m = win.reduce((s, x) => s + x, 0) / win.length;
-  const v = win.reduce((s, x) => s + (x - m) ** 2, 0) / (win.length - 1);
-  return Math.sqrt(v) * Math.sqrt(365); // annualized fraction
-});
+const fwdRV: number[] = days.map((_, i) => realizedVolOverWindow(logret, i, FWD, ANN));
 const vrpPts: number[] = [];
-for (let i = 0; i < days.length; i++) if (Number.isFinite(fwdRV[i])) vrpPts.push((iv[i] - fwdRV[i]) * 100);
+for (let i = 0; i < days.length; i++) if (Number.isFinite(fwdRV[i])) vrpPts.push(vrpPremium(iv[i], fwdRV[i]) * 100);
 const meanVRP = vrpPts.reduce((s, x) => s + x, 0) / vrpPts.length;
 const posShare = vrpPts.filter((x) => x > 0).length / vrpPts.length;
 console.log(`\nMEASUREMENT (implied − subsequent-30d realized, vol points):`);
 console.log(`  mean VRP = ${meanVRP.toFixed(2)} pts   P(VRP>0) = ${(posShare * 100).toFixed(0)}%   n=${vrpPts.length}`);
 
 // ───────────────────────── trailing realized vol for the SIGNAL (NO-LOOKAHEAD) ─────────────────────────
-// realizedVol(closes, n) = sample std of last n log-returns ending at i (NaN until i≥n). Annualize ×√365.
-function trailingRVann(n: number): number[] {
-  return realizedVol(closes, n).map((v) => (Number.isFinite(v) ? v * Math.sqrt(365) : NaN)); // fraction
-}
+// trailingRealizedVol(closes, n, ANN) = sample std of last n log-returns ending at i, annualized (NaN until i≥n).
+const trailingRVann = (n: number): number[] => trailingRealizedVol(closes, n, ANN); // fraction
 
 // ───────────────────────── the carry: short delta-hedged VOL, sized to CONSTANT VEGA ─────────────────────────
 // A single day's r²·365 is an unbiased but absurdly noisy variance estimate — modelling daily MTM on
@@ -132,14 +134,8 @@ function trailingRVann(n: number): number[] {
 // "sell a strip of options every day, hold to expiry" VRP harvester.
 // NO-LOOKAHEAD: side[i] uses ONLY IV[i] + trailing RV[i] (≤ i); the position's REALIZED leg is the
 // actual future RV — that is the realization (i→i+H), never used to DECIDE the position.
-function rvOverWindow(i: number, H: number): number {
-  // annualized realized vol of log-returns over days (i, i+H]  (the held window). NaN if truncated.
-  if (i + H >= logret.length) return NaN;
-  const win = logret.slice(i + 1, i + 1 + H);
-  const m = win.reduce((s, x) => s + x, 0) / win.length;
-  const v = win.reduce((s, x) => s + (x - m) ** 2, 0) / (win.length - 1);
-  return Math.sqrt(v) * Math.sqrt(365);
-}
+// annualized realized vol of log-returns over the held window (i, i+H]. NaN if truncated.
+const rvOverWindow = (i: number, H: number): number => realizedVolOverWindow(logret, i, H, ANN);
 function vrpCarryReturns(opts: { minVRPpts: number; rvWindow: number; feeVolPts: number; horizon: number }): { days: number[]; rets: number[] } {
   const rvTrail = trailingRVann(opts.rvWindow);
   const minVRP = opts.minVRPpts / 100;        // fraction
@@ -152,7 +148,7 @@ function vrpCarryReturns(opts: { minVRPpts: number; rvWindow: number; feeVolPts:
     if (K - rvT < minVRP) continue;            // only sell when observed premium positive enough
     const rvReal = rvOverWindow(i, H);         // realized vol over the held window (the realization)
     if (!Number.isFinite(rvReal)) continue;
-    const posPnl = (K - rvReal) - feeVol;      // short vol P&L over the position, net of slippage
+    const posPnl = shortVolPnl(K, rvReal, feeVol); // short vol P&L over the position, net of slippage
     // spread the position's P&L evenly across its H holding days → smooth daily book return
     for (let d = 1; d <= H; d++) rets[i + d] += posPnl / H;
   }
@@ -201,20 +197,15 @@ for (const r of results) console.log(`  ${r.label.padEnd(24)} ${r.ann.toFixed(2)
 // The H-day ladder makes consecutive daily returns share ~29/30 of the same positions, so the naive
 // daily Sharpe is INFLATED by autocorrelation. The honest risk-adjusted number uses NON-OVERLAPPING
 // positions: enter once every H days, hold to expiry, one independent P&L per non-overlapping block.
-// This is the un-smoothed truth about the carry's risk.
-function nonOverlapPnl(opts: { minVRPpts: number; rvWindow: number; feeVolPts: number; horizon: number }): number[] {
-  const rvTrail = trailingRVann(opts.rvWindow);
-  const minVRP = opts.minVRPpts / 100, feeVol = opts.feeVolPts / 100, H = opts.horizon;
-  const out: number[] = [];
-  for (let i = opts.rvWindow; i < days.length - H - 1; i += H) { // step by H → independent blocks
-    const K = iv[i], rvT = rvTrail[i];
-    if (!(K > 0) || !Number.isFinite(rvT) || K - rvT < minVRP) continue;
-    const rvReal = rvOverWindow(i, H);
-    if (!Number.isFinite(rvReal)) continue;
-    out.push((K - rvReal) - feeVol); // one independent short-vol position P&L (vol-point fraction)
-  }
-  return out;
-}
+// This is the un-smoothed truth about the carry's risk. Delegated to the extracted lib.
+const nonOverlapPnl = (opts: { minVRPpts: number; rvWindow: number; feeVolPts: number; horizon: number }): number[] =>
+  nonOverlappingPnl(iv, closes, logret, {
+    rvWindow: opts.rvWindow,
+    horizon: opts.horizon,
+    minVRP: opts.minVRPpts / 100,
+    feeVol: opts.feeVolPts / 100,
+    ann: ANN,
+  });
 
 // ───────────────────────── pick best, run the gauntlet ─────────────────────────
 const best = results.reduce((a, b) => (b.ann > a.ann ? b : a));
@@ -238,12 +229,8 @@ for (let k = 0; k < 1000; k++) nullSharpes.push(sharpe(applyPermutation(best.ret
 const permP = permutationTest(best.ann, nullSharpes, "greater");
 
 // ───────────────────────── TAIL panel (short vol = fat left tail; report it) ─────────────────────────
-const sorted = [...best.rets].sort((a, b) => a - b);
-const worst = sorted[0], p1 = sorted[Math.floor(sorted.length * 0.01)];
-const mu = best.rets.reduce((s, x) => s + x, 0) / best.rets.length;
-const sd = Math.sqrt(best.rets.reduce((s, x) => s + (x - mu) ** 2, 0) / (best.rets.length - 1));
-const skew = best.rets.reduce((s, x) => s + ((x - mu) / sd) ** 3, 0) / best.rets.length;
-const wins = best.rets.filter((x) => x > 0).length, losses = best.rets.filter((x) => x < 0).length;
+const tail = tailStats(best.rets);
+const { worst, p1, skew, win: wins, loss: losses } = tail;
 
 // ───────────────────────── advisor memo ─────────────────────────
 const memo = adviseTrade({
@@ -260,9 +247,8 @@ const memo = adviseTrade({
 // honest non-overlapping Sharpe for the best variant (un-inflated by the H-day ladder overlap)
 const bestVar = VARIANTS.find((v) => v.label === best.label)!;
 const noPnl = nonOverlapPnl(bestVar);
-const noSharpePerBlock = sharpe(noPnl);             // per H-day block
 const blocksPerYear = 365 / bestVar.horizon;
-const noAnnSharpe = noSharpePerBlock * Math.sqrt(blocksPerYear);
+const noAnnSharpe = nonOverlapAnnualizedSharpe(noPnl, bestVar.horizon); // HONEST: per-block Sharpe × √blocks/yr
 const noMean = noPnl.reduce((s, x) => s + x, 0) / noPnl.length;
 const noWin = noPnl.filter((x) => x > 0).length;
 

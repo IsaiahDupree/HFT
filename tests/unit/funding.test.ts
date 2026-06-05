@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fundingGate, fundingCarrySignal, netFundingReturns } from "@/lib/backtest/candle/funding";
+import { fundingGate, fundingCarrySignal, netFundingReturns, deltaNeutralCarryReturns } from "@/lib/backtest/candle/funding";
 import type { DailyCandle } from "@/lib/backtest/candle/engine";
 
 const candles = (closes: number[]): DailyCandle[] =>
@@ -59,5 +59,30 @@ describe("netFundingReturns — perp carry return (price − funding paid by a l
     const base = netFundingReturns(candles(a), a.map(() => 1), f, 5);
     const a2 = [...a]; a2[6] = 9999;
     expect(netFundingReturns(candles(a2), a2.map(() => 1), f, 5).slice(0, -1)).toEqual(base.slice(0, -1));
+  });
+});
+
+describe("deltaNeutralCarryReturns — harvest funding, price-neutral", () => {
+  it("collects |funding| whichever way it points (always the receiving side), minus entry cost", () => {
+    // bar0: f=+0.01 → short perp collects +0.01, minus a fresh 2-leg entry (5bps×2)
+    const out = deltaNeutralCarryReturns([0.01, 0.01], { minFunding: 0, feeBps: 5 });
+    expect(out[0]).toBeCloseTo(0.01 - 2 * 0.0005, 9);   // entry from flat = 2 legs
+    expect(out[1]).toBeCloseTo(0.01, 9);                // same side held → no turnover
+  });
+  it("a sign FLIP costs 4 legs (close both + reopen both)", () => {
+    const out = deltaNeutralCarryReturns([0.01, -0.01], { minFunding: 0, feeBps: 5 });
+    expect(out[1]).toBeCloseTo(0.01 - 4 * 0.0005, 9);   // |+1 − −1| = 2 → 2*2 legs
+  });
+  it("stays flat (0 return) when |funding| is below the minimum threshold", () => {
+    expect(deltaNeutralCarryReturns([0.00001, 0.00001], { minFunding: 0.0001, feeBps: 5 })).toEqual([0, 0]);
+  });
+  it("non-finite funding → flat that interval", () => {
+    expect(deltaNeutralCarryReturns([undefined, 0.01], { minFunding: 0, feeBps: 0 })).toEqual([0, 0.01]);
+  });
+  it("is no-lookahead (funding[i] only)", () => {
+    const f = [0.01, -0.01, 0.01, -0.01, 0.01];
+    const base = deltaNeutralCarryReturns(f, { feeBps: 3 });
+    const f2 = [...f]; f2[4] = 9;
+    expect(deltaNeutralCarryReturns(f2, { feeBps: 3 }).slice(0, 4)).toEqual(base.slice(0, 4));
   });
 });

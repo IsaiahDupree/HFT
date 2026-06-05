@@ -134,7 +134,8 @@
     "probe:ws": "tsx scripts/probe-ws.ts",
     "analyze:ws-leadlag": "tsx scripts/ws-leadlag-capture.ts",
     "fetch:funding:binance": "tsx scripts/fetch-funding-binance.ts",
-    "backtest:funding-carry": "tsx scripts/backtest-funding-carry.ts"
+    "backtest:funding-carry": "tsx scripts/backtest-funding-carry.ts",
+    "backtest:carry-neutral": "tsx scripts/backtest-carry-neutral.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

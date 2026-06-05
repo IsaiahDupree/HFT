@@ -39,6 +39,33 @@ export function fundingCarrySignal(funding: ReadonlyArray<number | undefined>, o
 }
 
 /**
+ * DELTA-NEUTRAL funding carry — the real carry trade: hold the funding-RECEIVING leg of a
+ * perp+spot hedge (short perp + long spot when funding > 0 so the short collects; long perp +
+ * short spot when funding < 0), so the two price legs cancel and the return is the funding you
+ * HARVEST minus turnover. Take a side only when |funding| ≥ `minFunding` (enough to clear the
+ * round-trip cost). Per interval: +|funding| collected, minus `feeBps` × (legs changed) — a
+ * fresh entry from flat moves 2 legs, a sign FLIP moves 4. Convention matches the rest of the
+ * file (funding[i] known at i, applied over i→i+1; NO-LOOKAHEAD). Assumes negligible basis
+ * drift between spot and perp (holds for liquid majors at the funding cadence) — that residual
+ * basis risk is the model's main omission.
+ */
+export function deltaNeutralCarryReturns(funding: ReadonlyArray<number | undefined>, opts: { minFunding?: number; feeBps?: number } = {}): number[] {
+  const minF = opts.minFunding ?? 0;
+  const feeBps = opts.feeBps ?? 5;
+  const out: number[] = [];
+  let side = 0; // -1 = short perp (collect +funding), +1 = long perp (collect −funding), 0 = flat
+  for (let i = 0; i < funding.length; i++) {
+    const f = funding[i];
+    const target = finite(f) && Math.abs(f) >= minF ? ((f as number) > 0 ? -1 : 1) : 0;
+    const collect = target !== 0 && finite(f) ? Math.abs(f as number) : 0;
+    const fee = Math.abs(target - side) * 2 * (feeBps / 1e4); // 2 legs per unit of side change
+    out.push(collect - fee);
+    side = target;
+  }
+  return out;
+}
+
+/**
  * Per-bar net PERP return of a position series: the price return MINUS the funding paid by a
  * long (a long pays positive funding, receives negative), minus the fee on turnover. This is
  * the carry-correct return model (variantReturns ignores funding). funding[i] is the rate

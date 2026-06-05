@@ -14,6 +14,8 @@ import { relativeStrengthReturns, defaultRelStrengthVariants, equalWeightBuyHold
 import { proofCouncil, renderProofCouncil } from "../src/lib/backtest/proof-council.ts";
 import { adviseTrade, renderTradeMemo } from "../src/lib/backtest/advisor.ts";
 import { selectUniverse, universeHealth } from "../src/lib/backtest/candle/universe.ts";
+import { lcgRng, blockShufflePermutation, permutationTest } from "../src/lib/backtest/shuffle-control.ts";
+import type { PriceSeries } from "../src/lib/backtest/candle/xsection.ts";
 
 const arg = (name: string, def: number): number => {
   const i = process.argv.indexOf(name);
@@ -58,6 +60,22 @@ for (const { v, i, sh } of variants.map((v, i) => ({ v, i, sh: fullSh[i] })).sor
 console.log(`\n  best (full): ${variants[bestIdx].label} ann.Sharpe ${ann(fullSh[bestIdx]).toFixed(2)}`);
 console.log(`  walk-forward: IS-best ${variants[isBest].label} → OOS ann.Sharpe ${ann(oosSh).toFixed(2)} ${oosSh > 0 ? "✓ HELD" : "✗ FADED"}`);
 console.log(`  overfit battery: PBO ${PBO.toFixed(2)}  Deflated-Sharpe ${dsr.dsr.toFixed(2)}  · ${oosHold}/${variants.length} variants held OOS`);
+
+// Shuffle control — re-run the best variant on TIME-BLOCK-SHUFFLED data (same block permutation
+// for every coin, so cross-sectional structure is kept but longer-horizon momentum is broken). If
+// the real Sharpe doesn't beat the shuffled null, the "edge" doesn't need the real time-ordering.
+const N_SHUF = 100, BLK = 5;
+const bestV = variants[bestIdx];
+const realSh = fullSh[bestIdx];
+const nullSh: number[] = [];
+for (let k = 0; k < N_SHUF; k++) {
+  const perm = blockShufflePermutation(days.length, BLK, lcgRng(1000 + k));
+  const shuf: PriceSeries = {};
+  for (const c of coins) { const m = new Map<number, number>(); days.forEach((d, i) => { const src = data[c].get(days[perm[i]]); if (src != null) m.set(d, src); }); shuf[c] = m; }
+  nullSh.push(sharpe(relativeStrengthReturns(bestV, coins, shuf, days, { feeBps, startIndex: maxL })));
+}
+const sc = permutationTest(realSh, nullSh, "greater");
+console.log(`  shuffle control: real Sharpe ${ann(realSh).toFixed(2)} vs ${N_SHUF} time-shuffled nulls (mean ${ann(nullSh.reduce((a, x) => a + x, 0) / nullSh.length).toFixed(2)}) → p=${sc.pValue.toFixed(3)} ${sc.pValue < 0.05 ? "✓ needs real time-order" : "✗ shuffle does as well (no time-series edge)"}`);
 
 console.log("\n" + renderProofCouncil(proofCouncil({
   label: variants[isBest].label, bars: T, feeBps,

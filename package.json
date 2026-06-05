@@ -141,7 +141,8 @@
     "discover:high-funding": "tsx scripts/discover-high-funding.ts",
     "backtest:basis": "tsx scripts/backtest-basis.ts",
     "backtest:funding-xvenue": "tsx scripts/backtest-funding-xvenue.ts",
-    "discover:funding-persistence": "tsx scripts/funding-persistence.ts"
+    "discover:funding-persistence": "tsx scripts/funding-persistence.ts",
+    "carry:maker-fill": "tsx scripts/maker-fill-carry.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

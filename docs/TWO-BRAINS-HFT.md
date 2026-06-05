@@ -79,12 +79,38 @@ feature-proxy / fixed / shuffled baselines on the accumulated data before believ
 
 ---
 
-## Next integrations (each to be backtested + falsified the same way)
-- **Per-instrument regime** (size each carry leg by its own risk) instead of portfolio-level — the
-  "cut BTC, keep ETH" judgment.
-- **Squeeze-risk gate for funding carry** — size down the short-perp leg when OI + funding + realized
-  vol all spike (the failure mode that sank the cross-sectional version).
-- **Cross-edge allocator** — a regime layer that rotates capital across the confirmed carries
-  (funding / calendar / vol-premium / staking) by which regime each is in.
-- **Live LLM Loop B** — accumulate (regime, features, outcome) and run the §7.6 falsification on real
-  paper data, not asserted.
+## Cross-edge allocator — the deployable book (`npm run backtest:cross-edge`)
+
+Combine the confirmed carries into ONE book: calendar-BTC + calendar-ETH + a squeeze-gated
+funding-carry-alts sleeve, weighted **risk-parity** (inverse-vol, no-lookahead).
+
+| Book | OOS Sharpe |
+|---|---|
+| best single sleeve (fund-alts) | 9.58 |
+| equal-weight | 9.60 |
+| **risk-parity (combined)** | **11.79** |
+
+**§7.6 verdict:** combining beats the best single sleeve (11.5 > 9.6) and beats equal-weight →
+**diversification + risk-parity is the real win.** But a regime overlay *on the combined book* FAILS
+the shuffle test (p=0.30) — and that's the honest finding: **regime-sizing helps an individual
+volatile sleeve** (the single calendar carry passed at p=0.013) **but adds nothing on top of an
+already-diversified smooth portfolio.** So the architecture is: *gate each sleeve, then risk-parity
+combine — no redundant overlay.* (Caveat: the funding sleeve is funding-only so its Sharpe is
+inflated; the calendar sleeves are honest. The honest combined number needs the basis-aware funding
+sleeve.)
+
+## Live forward track — the "did it hold up?" test (`npm run carry:paper-snapshot`)
+
+A daily snapshot logs each sleeve's current signal + expected daily carry, and evaluates the prior
+day's **realized vs expected** → `data/paper/carry-log.jsonl`. This is the only test no in-sample
+number can give: does the carry actually pay forward, out-of-sample, live? First snapshot
+(2026-06-05): fund-BEAT 19.7 bp/day, fund-LAB 8.6 bp/day expected (the persistence names);
+calendar BTC/ETH ~0.5 bp/day. Daily launchd (`ops/com.hft.carry-paper.plist`, 00:30 UTC) accumulates;
+`-- --show` prints the track. **This is now running.**
+
+## Still open (each to be backtested + falsified the same way)
+- **Per-instrument regime** (size each carry leg by its own risk) — the "cut BTC, keep ETH" judgment.
+- **Live LLM Loop B** — replace the feature-proxy gate with an LLM regime call; accumulate
+  (regime, features, outcome) and run §7.6 on the paper track, not asserted.
+- **Honest funding sleeve in the allocator** — swap the funding-only sleeve for the basis-aware one
+  so the combined Sharpe isn't inflated.

@@ -143,7 +143,8 @@
     "backtest:funding-xvenue": "tsx scripts/backtest-funding-xvenue.ts",
     "discover:funding-persistence": "tsx scripts/funding-persistence.ts",
     "carry:maker-fill": "tsx scripts/maker-fill-carry.ts",
-    "backtest:calendar-basis": "tsx scripts/backtest-calendar-basis.ts"
+    "backtest:calendar-basis": "tsx scripts/backtest-calendar-basis.ts",
+    "backtest:xsection-carry": "tsx scripts/backtest-xsection-funding-carry.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

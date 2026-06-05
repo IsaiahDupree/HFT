@@ -114,7 +114,36 @@ to the tested `calendarBasisReturns` (pure, +5 tests). Run: `npm run backtest:ca
 
 ---
 
+## ✅ EDGE #3 — Vol risk premium (sell vol)
+
+**Status: PAPER (real but tail-risky).** Found by the carry-discovery workflow; the most
+academically-robust premium in all of finance, confirmed on crypto.
+
+### The trade
+Implied volatility systematically exceeds subsequent realized volatility — option *sellers* are
+paid for bearing variance risk. Sell vol (straddles / variance) and harvest the gap.
+
+### Evidence (Deribit DVOL implied vs Binance realized, real data via public API)
+- **VRP = implied − realized(30d) = +8.87 vol points, positive 73% of 1867 days** (2021–2026).
+- Honest **non-overlapping Sharpe ≈ 1.23** (36 independent 30-day blocks, won 24/36). PBO 0.17, DSR 1.00.
+- The overlapping-window Sharpe (9.26) is inflated and was correctly discarded.
+
+### Caveat (the one that matters)
+Short vol has a **fat left tail / negative skew** — you collect small premiums and occasionally
+lose big in a vol spike. Sharpe **does not** capture this; the honest 1.23 *overstates* the
+risk-adjusted appeal. This is "pennies in front of a steamroller": real positive expectancy, real
+blow-up risk. Size for the tail, not the Sharpe. (Script: `scripts/_carry-deribit-vol-risk-premium.ts`.)
+
+---
+
 ## Adjacent variants (real but marginal)
+
+- **Staking-hedged yield carry** (`scripts/_carry-staking-hedged-yield.ts`): stake ETH/SOL (~3.2%/7%
+  APY) + short the perp to hedge price → delta-neutral staking yield, *plus* the short collects
+  funding. **~5–6% net APR, beats plain funding carry, fee-robust** (survives 150 bps/yr drag) →
+  **PAPER**. Real structural carry, but the headline Sharpe (~14) is inflated — it models staking as
+  riskless and omits the real risks: **ETH unbond-queue illiquidity** (you can't unwind the hedge
+  against a leg you can't exit for days/weeks), slashing, LST depeg, tracking error.
 
 - **Cross-venue funding arb** (Binance − Hyperliquid, `backtest:funding-xvenue`): the venue funding
   *spread* is small (~2.5 bps/day, mostly arbed away) → only **~3% APR at maker fees**, negative at
@@ -142,13 +171,27 @@ to the tested `calendarBasisReturns` (pure, +5 tests). Run: `npm run backtest:ca
 | Realized-vol mean-reversion (daily) | **falsified** | vol *persists* — a top-decile spike predicts ~2.45× **higher** next-day vol |
 | Open-interest × funding squeeze | **rejected** | shuffle p=0.92 (a random reorder out-Sharpes the real timing) — annualization mirage on 31 days |
 | Aggregate-funding market timing (breadth) | **STAND_ASIDE** | net-negative OOS — de-grossing a −68% bear basket is defensive beta-reduction, not alpha |
+| **Cross-sectional funding "carry"** (short top / long bottom funding) | **REJECTED on honest accounting** | funding-only model = BUY (Sharpe 8.9), but the **price-aware** version (real long/short basket P&L) is **−65%, STAND_ASIDE** — the baskets don't cancel; shorting pumped high-funding alts loses more on price than the funding pays |
+| Calendar *spread* / term structure (front vs back quarter) | **STAND_ASIDE** | term premium tiny (~0.3%/yr) and non-convergent — pure noise; the outright basis (edge #2) is strictly better |
+| Inter-exchange funding (Binance vs OKX) | **STAND_ASIDE** | spread even smaller (1.4 bp/day) → ~0.6% APR, uneconomic; OKX API caps at 95 days |
+| Basis roll-down timing | **redundant** | the underlying carry is just edge #2; the "enter in the fat band" timing is falsified (full-life is best) |
 
-### The edge-discovery workflow (2026-06-05)
-A 7-family fan-out, each agent building a real no-lookahead backtest through the gauntlet + advisor.
-**Result: 5 cleanly rejected, 2 PAPER (calendar basis = the keeper), 0 BUY.** The meta-finding the
-whole project keeps confirming: **CARRY / income edges are real** (funding carry, calendar basis);
-**TIMING / directional edges are beta or noise** (every directional family above failed a control or
-the overfit gate). Reproducible negatives kept at `scripts/_discover-*.ts`.
+### The edge-discovery workflows (2026-06-05)
+Two fan-outs, 13 families total, each agent building a real no-lookahead backtest through the
+gauntlet + advisor. Round 1 (7 directional/mixed): **5 rejected, calendar basis kept.** Round 2
+(6 carry/structural): **vol-risk-premium + staking-hedged kept, xsection-funding-carry rejected on
+verification, 3 rejected.** Reproducible scripts at `scripts/_discover-*.ts` + `scripts/_carry-*.ts`.
+
+**The meta-finding, sharpened — carry is real *only when the hedge is tight*:**
+- ✅ single-name funding carry (perp vs its *own* spot — tight), calendar basis (future→spot
+  convergence *locked* at expiry — tight), staking-hedged (per-coin hedge — tight), vol premium
+  (structural, no basket).
+- ❌ cross-sectional funding "carry" (hedged by a *basket of different coins* — loose) looks like a
+  +Sharpe-8.9 carry on funding-only, but the basket doesn't cancel and the honest price-aware
+  version is **−65%**. A loose-basket "carry" is a directional bet in disguise.
+- ❌ every pure **timing / directional** family (momentum, xsection price-factor, vol-reversion,
+  OI-squeeze, funding-time-of-day, breadth-timing) — beta or noise, killed by a control or the
+  overfit gate.
 
 **The lesson encoded:** big ROI ≠ edge. A +12,614% backtest was bull-market beta that *underperformed*
 buy-and-hold. A "regime edge" found by scanning is a hypothesis count, not a result. The advisor
@@ -168,3 +211,8 @@ exists to say this in one voice every time.
   the fee from L2; model the basis from both legs.
 - **Income ≠ timing.** Carry is order-independent (shuffle doesn't apply); momentum is a timing edge
   (shuffle is the right test). Use the right control for the right edge.
+- **Model the hedge, not just the income.** A carry's funding-only view omits the price risk of its
+  hedge legs and inflates the Sharpe. Always build the *price-aware* version. If the hedge is tight
+  (perp-vs-own-spot, dated-future convergence) it survives; if it's a loose basket of different names
+  it can flip negative (the cross-sectional funding "carry" went +8.9 Sharpe → −65% when priced
+  honestly). `backtest:xsection-carry` is the cautionary keeper.

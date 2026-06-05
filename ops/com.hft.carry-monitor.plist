@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.hft.carry-monitor — HOURLY carry-trigger watcher. Polls Hyperliquid (both-legs funding), dYdX (funding)
+  and Deribit (dated-futures basis), runs each candidate through the executor safety cores, and logs a snapshot
+  + an escalation alert (off→watch→armed) to a LOCAL SQLite DB on the My Passport drive. You get told the moment
+  a carry crosses its deploy trigger — without watching screens, and it survives a reboot.
+
+  Install:  cp ops/com.hft.carry-monitor.plist ~/Library/LaunchAgents/ && \
+            launchctl load ~/Library/LaunchAgents/com.hft.carry-monitor.plist
+  Stop:     launchctl unload ~/Library/LaunchAgents/com.hft.carry-monitor.plist
+  Check:    npm run carry:monitor -- --show   (or read /Volumes/My Passport/hft-data/carry-monitor.db)
+
+  TCC: launchd is blocked from ~/Documents AND, by default, from external volumes. Run from a checkout OUTSIDE
+  ~/Documents (set HFT_REPO; the runtime tree must contain this repo's code — `git pull` it there first) and
+  grant the launching shell Full Disk Access (System Settings → Privacy & Security → Full Disk Access → add
+  /bin/zsh) so the daemon can write the DB to /Volumes/My Passport. Edit HFT_REPO/CARRY_DB_PATH below.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hft.carry-monitor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string><string>-lc</string>
+    <string>exec "$HFT_REPO/scripts/cron-carry-monitor.sh"</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HFT_REPO</key><string>/Users/isaiahdupree/hft-live</string>
+    <key>CARRY_DB_PATH</key><string>/Volumes/My Passport/hft-data/carry-monitor.db</string>
+  </dict>
+  <key>StartInterval</key><integer>3600</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/tmp/carry-monitor.log</string>
+  <key>StandardErrorPath</key><string>/tmp/carry-monitor.err</string>
+</dict>
+</plist>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.hft.carry-paper — daily forward paper-trade snapshot of the carry book (00:30 UTC, after
+  Binance funding settles). Accumulates data/paper/carry-log.jsonl, the real OOS track record.
+
+  Install:  cp ops/com.hft.carry-paper.plist ~/Library/LaunchAgents/ && \
+            launchctl load ~/Library/LaunchAgents/com.hft.carry-paper.plist
+  Stop:     launchctl unload ~/Library/LaunchAgents/com.hft.carry-paper.plist
+  Check:    npm run carry:paper-snapshot -- --show
+
+  TCC: launchd is blocked from ~/Documents. Set HFT_REPO to a checkout OUTSIDE ~/Documents (with its
+  own .env.local containing POLYMARKET_PROXY_URL), or grant the shell Full Disk Access. Edit HFT_REPO.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hft.carry-paper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string><string>-lc</string>
+    <string>exec "$HFT_REPO/scripts/cron-carry-paper.sh"</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>HFT_REPO</key><string>/Users/isaiahdupree/hft-live</string></dict>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>30</integer></dict>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/tmp/carry-paper.log</string>
+  <key>StandardErrorPath</key><string>/tmp/carry-paper.err</string>
+</dict>
+</plist>

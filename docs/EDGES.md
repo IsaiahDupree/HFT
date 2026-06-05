@@ -193,6 +193,29 @@ verification, 3 rejected.** Reproducible scripts at `scripts/_discover-*.ts` + `
   OI-squeeze, funding-time-of-day, breadth-timing) — beta or noise, killed by a control or the
   overfit gate.
 
+### Intraday / "massive rewards in a day" (2026-06-05) — all rejected, and *why* matters
+
+A 5-family fan-out on real minute data (14–30 days, paginated via the proxy), net of realistic taker
+costs (10–24 bps round-trip) + the shuffle control. **0/5 survive — but not because the signals are
+fake.** Several are genuinely real *gross*:
+
+| Intraday edge | Gross signal | Net verdict |
+|---|---|---|
+| Liquidation-cascade reversal | ~+10 bps at 15–30m (win 58%) | **NO** — < cost; random-entry control p=0.50 (filter selects nothing) |
+| Minute-scale pairs stat-arb | **~+4 bps/trade, gross Sharpe ~4.5** (real reconvergence — *unlike* daily momentum) | **NO** — < 24 bps two-leg cost |
+| Cross-exchange basis reversion | +3–8 bps convergence (real) | **NO** — lives entirely inside the 24 bps two-leg cost; 0% net win rate |
+| Momentum-ignition breakout | ~+2 bps (real continuation) | **NO** — 16–25 trades/day × 14 bps = fee-illusion |
+| Intraday vol-spike reversion | ~0 bps gross | **NO** — falsified, direction is noise |
+
+**The decisive lesson — the mirror image of carry.** The gross intraday inefficiencies are *real but
+tiny* (2–10 bps), and they're **smaller than what it costs to trade them** (12–24 bps round-trip at
+retail taker fees). The firms that *can* harvest them — colocation, maker rebates, exchange membership,
+near-zero fees — have already arbitraged the gross edge down to roughly the cost line. So **carry pays
+because you're paid a structural yield; intraday speculation loses because you pay the spread** — and
+"massive rewards in a day" lives on the wrong side of the cost line, reachable only from inside the
+matching engine. This is *why* the durable edge is carry, stated as a measured result, not a prior.
+(Reproducible negatives: `scripts/_intraday-*.ts`.)
+
 **The lesson encoded:** big ROI ≠ edge. A +12,614% backtest was bull-market beta that *underperformed*
 buy-and-hold. A "regime edge" found by scanning is a hypothesis count, not a result. The advisor
 exists to say this in one voice every time.

@@ -18,8 +18,11 @@ import { deltaNeutralCarryReturns } from "../src/lib/backtest/candle/funding.ts"
 import { adviseTrade, renderTradeMemo } from "../src/lib/backtest/advisor.ts";
 
 const DAY = 86_400;
+const flagS = (n: string): string | undefined => { const i = process.argv.indexOf(n); return i >= 0 ? process.argv[i + 1] : undefined; };
+const onlyCoins = flagS("--coins")?.split(",").map((s) => s.trim().toUpperCase());
 const dir = resolve(process.cwd(), "data", "funding");
-const coins = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".binance.jsonl")).map((f) => f.replace(".binance.jsonl", "")) : [];
+const coins = (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".binance.jsonl")).map((f) => f.replace(".binance.jsonl", "")) : [])
+  .filter((c) => !onlyCoins || onlyCoins.includes(c.toUpperCase()));
 if (!coins.length) { console.log("\n  no data/funding/*.binance.jsonl — run: npm run fetch:funding:binance\n"); process.exit(0); }
 
 function loadFunding(coin: string): Array<{ time: number; rate: number }> {
@@ -28,11 +31,11 @@ function loadFunding(coin: string): Array<{ time: number; rate: number }> {
 }
 
 const VARIANTS = [
-  { label: "all@2bp", minF: 0, fee: 2 },
-  { label: ">0.5bp@2bp", minF: 0.00005, fee: 2 },
-  { label: ">1bp@2bp", minF: 0.0001, fee: 2 },
-  { label: ">1bp@1bp", minF: 0.0001, fee: 1 },
+  { label: ">1bp@1bp", minF: 0.0001, fee: 1 },     // optimistic maker fee
   { label: ">2bp@1bp", minF: 0.0002, fee: 1 },
+  { label: ">3bp@5bp", minF: 0.0003, fee: 5 },      // realistic alt taker-ish
+  { label: ">5bp@10bp", minF: 0.0005, fee: 10 },    // illiquid-alt wide-spread round-trip
+  { label: ">10bp@10bp", minF: 0.001, fee: 10 },    // only harvest very fat funding at high cost
 ];
 
 // Per coin + variant: 8-hourly carry → compound into daily, keyed by day-unix.
@@ -92,3 +95,9 @@ console.log("\n" + renderTradeMemo(adviseTrade({
   strategyReturns: series[isBest], benchmarkReturns: cash,
   pbo: PBO, dsr, oosFrac: 0.3, betaAttractive: false, // cash is not "attractive beta"
 })) + "\n");
+
+console.log(`  ⚠ MODEL CAVEAT: this OMITS BASIS RISK (the price legs are assumed to cancel perfectly) — the real`);
+console.log(`    risk of a delta-neutral carry. So the SHARPE is inflated (real ≈ 1-3, not ${ann(fullSh[isBest]).toFixed(0)}); the robust signal is the`);
+console.log(`    positive EXPECTANCY (~${(Math.pow(1 + cum(series[isBest]), 365 / T) - 1) * 100 >= 0 ? "+" : ""}${((Math.pow(1 + cum(series[isBest]), 365 / T) - 1) * 100).toFixed(0)}% APR net of fees). Also capacity/borrow-limited on illiquid alts. Run a`);
+console.log(`    spot-perp BASIS-aware backtest (npm run backtest:basis) for a risk-honest Sharpe before sizing.\n`);
+

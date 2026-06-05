@@ -137,7 +137,8 @@
     "backtest:funding-carry": "tsx scripts/backtest-funding-carry.ts",
     "backtest:carry-neutral": "tsx scripts/backtest-carry-neutral.ts",
     "monitor:reference": "tsx scripts/reference-monitor.ts",
-    "record:dydx:cron": "zsh scripts/cron-record-dydx.sh"
+    "record:dydx:cron": "zsh scripts/cron-record-dydx.sh",
+    "discover:high-funding": "tsx scripts/discover-high-funding.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

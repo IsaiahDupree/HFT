@@ -66,6 +66,34 @@ export function deltaNeutralCarryReturns(funding: ReadonlyArray<number | undefin
 }
 
 /**
+ * BASIS-AWARE delta-neutral carry — the risk-honest version of deltaNeutralCarryReturns. Models
+ * BOTH legs with their OWN prices, so the previously-omitted BASIS RISK (perp and spot don't move
+ * identically — the basis widens/narrows) shows up in the return. Hold the funding-receiving side
+ * (short perp + long spot when funding > 0), collect |funding|, and bear the basis change:
+ *   net[i] = |funding| + perpSide·(perpRet − spotRet) − fee
+ * where perpSide = −1 (short perp) when funding > 0. `spotClose`/`perpClose` are aligned daily
+ * closes; `funding` the daily-summed rate. NO-LOOKAHEAD (position from funding[i], realized i→i+1).
+ */
+export function basisCarryReturns(spotClose: number[], perpClose: number[], funding: ReadonlyArray<number | undefined>, opts: { minFunding?: number; feeBps?: number } = {}): number[] {
+  const minF = opts.minFunding ?? 0, feeBps = opts.feeBps ?? 5;
+  const n = Math.min(spotClose.length, perpClose.length); // funding[i] is read undefined-safe below
+  const out: number[] = [];
+  let side = 0; // perp side: −1 short (funding>0), +1 long (funding<0)
+  for (let i = 0; i < n - 1; i++) {
+    const f = funding[i];
+    const target = finite(f) && Math.abs(f) >= minF ? ((f as number) > 0 ? -1 : 1) : 0;
+    const collected = target !== 0 && finite(f) ? Math.abs(f as number) : 0;
+    const spotRet = spotClose[i] > 0 ? spotClose[i + 1] / spotClose[i] - 1 : 0;
+    const perpRet = perpClose[i] > 0 ? perpClose[i + 1] / perpClose[i] - 1 : 0;
+    const pricePnL = target * (perpRet - spotRet); // short perp + long spot ⇒ gains as the basis narrows
+    const fee = Math.abs(target - side) * 2 * (feeBps / 1e4);
+    out.push(collected + pricePnL - fee);
+    side = target;
+  }
+  return out;
+}
+
+/**
  * Per-bar net PERP return of a position series: the price return MINUS the funding paid by a
  * long (a long pays positive funding, receives negative), minus the fee on turnover. This is
  * the carry-correct return model (variantReturns ignores funding). funding[i] is the rate

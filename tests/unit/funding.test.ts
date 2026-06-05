@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fundingGate, fundingCarrySignal, netFundingReturns, deltaNeutralCarryReturns } from "@/lib/backtest/candle/funding";
+import { fundingGate, fundingCarrySignal, netFundingReturns, deltaNeutralCarryReturns, basisCarryReturns } from "@/lib/backtest/candle/funding";
 import type { DailyCandle } from "@/lib/backtest/candle/engine";
 
 const candles = (closes: number[]): DailyCandle[] =>
@@ -84,5 +84,30 @@ describe("deltaNeutralCarryReturns — harvest funding, price-neutral", () => {
     const base = deltaNeutralCarryReturns(f, { feeBps: 3 });
     const f2 = [...f]; f2[4] = 9;
     expect(deltaNeutralCarryReturns(f2, { feeBps: 3 }).slice(0, 4)).toEqual(base.slice(0, 4));
+  });
+});
+
+describe("basisCarryReturns — basis-aware carry (the risk-honest version)", () => {
+  it("when spot==perp the price legs cancel and it reduces to pure funding harvest", () => {
+    const spot = [100, 110, 121], perp = [100, 110, 121];
+    expect(basisCarryReturns(spot, perp, [0.01, 0.01], { minFunding: 0, feeBps: 0 })).toEqual([0.01, 0.01]);
+  });
+  it("a widening basis HURTS the short-perp carry (perp outruns spot)", () => {
+    // funding>0 → short perp + long spot. perp +10%, spot +5% → basis widened → loss on the price legs
+    const out = basisCarryReturns([100, 105], [100, 110], [0.01], { minFunding: 0, feeBps: 0 });
+    expect(out[0]).toBeCloseTo(0.01 + (-1) * (0.10 - 0.05), 9); // +funding − 5% basis loss
+    expect(out[0]).toBeLessThan(0);
+  });
+  it("a narrowing basis ADDS to the carry (rich perp converges to spot)", () => {
+    const out = basisCarryReturns([100, 105], [100, 102], [0.01], { minFunding: 0, feeBps: 0 });
+    expect(out[0]).toBeCloseTo(0.01 + (-1) * (0.02 - 0.05), 9); // +funding + 3% convergence gain
+    expect(out[0]).toBeGreaterThan(0.01);
+  });
+  it("charges the round-trip fee on entry and is no-lookahead", () => {
+    const spot = [100, 100, 100], perp = [100, 100, 100];
+    expect(basisCarryReturns(spot, perp, [0.01, 0.01], { feeBps: 5 })[0]).toBeCloseTo(0.01 - 2 * 0.0005, 9);
+    const base = basisCarryReturns([100, 101, 102, 103], [100, 101, 102, 103], [0.01, 0.01, 0.01], { feeBps: 2 });
+    const out2 = basisCarryReturns([100, 101, 102, 999], [100, 101, 102, 999], [0.01, 0.01, 0.01], { feeBps: 2 });
+    expect(out2.slice(0, 2)).toEqual(base.slice(0, 2));
   });
 });

@@ -47,6 +47,13 @@ export async function fetchBinanceKlines(symbol: string, interval = "1d", opts: 
   return parseBinanceKlines((await getJson(`${SPOT}/api/v3/klines?${p}`)) as Array<Array<number | string>>);
 }
 
+/** PERP (USD-M futures) klines from fapi — the price leg of a basis trade. Normalized + sanitized. */
+export async function fetchBinancePerpKlines(symbol: string, interval = "1d", opts: { startUnix?: number; limit?: number } = {}): Promise<VenueCandle[]> {
+  const p = new URLSearchParams({ symbol, interval, limit: String(opts.limit ?? 1000) });
+  if (opts.startUnix != null) p.set("startTime", String(opts.startUnix * 1000));
+  return parseBinanceKlines((await getJson(`${FAPI}/fapi/v1/klines?${p}`)) as Array<Array<number | string>>);
+}
+
 /** Perp FUNDING history (the geo-blocked prize). Ascending by time; rate = fraction longs pay. */
 export async function fetchBinanceFunding(symbol: string, opts: { startUnix?: number; limit?: number } = {}): Promise<FundingPoint[]> {
   const p = new URLSearchParams({ symbol, limit: String(opts.limit ?? 1000) });

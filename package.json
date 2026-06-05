@@ -148,7 +148,8 @@
     "backtest:carry-regime": "tsx scripts/backtest-carry-regime.ts",
     "backtest:cross-edge": "tsx scripts/backtest-cross-edge.ts",
     "carry:paper-snapshot": "tsx scripts/carry-paper-snapshot.ts",
-    "carry:paper-cron": "zsh scripts/cron-carry-paper.sh"
+    "carry:paper-cron": "zsh scripts/cron-carry-paper.sh",
+    "carry:now": "tsx scripts/carry-now.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

@@ -175,6 +175,14 @@ blow-up risk. Size for the tail, not the Sharpe. (Script: `scripts/_carry-deribi
 | Calendar *spread* / term structure (front vs back quarter) | **STAND_ASIDE** | term premium tiny (~0.3%/yr) and non-convergent — pure noise; the outright basis (edge #2) is strictly better |
 | Inter-exchange funding (Binance vs OKX) | **STAND_ASIDE** | spread even smaller (1.4 bp/day) → ~0.6% APR, uneconomic; OKX API caps at 95 days |
 | Basis roll-down timing | **redundant** | the underlying carry is just edge #2; the "enter in the fat band" timing is falsified (full-life is best) |
+| **Negative-funding carry via DeFi borrow** (long perp + short spot, borrow on Aave) | **STRUCTURALLY CLOSED** | the fat-negative names (COMP −20% durable/100% persist, alts, memes) are **not borrowable** on Aave V3 (COMP isn't even a reserve; UNI/AAVE/CRV/SNX collateral-only). The 19 borrowable reserves are all BTC/ETH variants + LINK + stables — **all ~0% durable funding**. Borrowable ∩ fat-negative ∩ persistent = **∅**. Borrowability and funding-richness price the same risk *inversely* — unbreakable with Aave. Probe: `scripts/_aave-borrow-probe.ts` |
+
+### Execution reality — venue + the durable-rate rule (2026-06-05)
+Taking the carry to a live executor surfaced truths the backtest can't:
+- **Gate carry on the DURABLE (median) funding, never the mean.** A memecoin sits at the venue funding *floor* most hours and spikes rarely; the mean is spike-inflated and uncollectable (AZTEC mean +26% vs median +11%; LAB durable 5% vs *recent* 757%). `src/lib/exec/funding-stats.ts` (+6 tests). This is the magnitude-level sibling of the persistence (sign) and tight-hedge (basket) traps.
+- **0 funding carries executable on Hyperliquid** (the KYC-free both-legs venue). HL spot has no borrow → only positive-funding carries are clean, and those are pinned at HL's +11% hourly **funding floor → +8% net**, under the bar. Fat negatives need borrow (see above). A **basis guard** is mandatory: a ticker match ≠ an asset match (perp TRUMP $1.60 vs "TRUMP" spot token $0.0003 = 53M bp). Recon: `npm run carry:hl`.
+- **No better cross-venue carry**: dYdX × Coinbase/Binance.US reproduces the same wall — the only name clearing 15% net (COMP) is negative-funding/needs-borrow. The binding constraint (no KYC-free short-spot-borrow on fat-funding names) is **venue-agnostic**.
+- **Net**: the deployable real edge today is **edge #2 (calendar basis, ~8%/yr, convergence-locked)** — but it needs a dated-futures venue (Binance/Deribit), which HL lacks. Funding carry stays paper until a name clears *durable* funding > ~+16% APR with a real, deep, same-asset spot hedge.
 
 ### The edge-discovery workflows (2026-06-05)
 Two fan-outs, 13 families total, each agent building a real no-lookahead backtest through the

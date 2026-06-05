@@ -108,9 +108,25 @@ number can give: does the carry actually pay forward, out-of-sample, live? First
 calendar BTC/ETH ~0.5 bp/day. Daily launchd (`ops/com.hft.carry-paper.plist`, 00:30 UTC) accumulates;
 `-- --show` prints the track. **This is now running.**
 
-## Still open (each to be backtested + falsified the same way)
-- **Per-instrument regime** (size each carry leg by its own risk) — the "cut BTC, keep ETH" judgment.
-- **Live LLM Loop B** — replace the feature-proxy gate with an LLM regime call; accumulate
-  (regime, features, outcome) and run §7.6 on the paper track, not asserted.
-- **Honest funding sleeve in the allocator** — swap the funding-only sleeve for the basis-aware one
-  so the combined Sharpe isn't inflated.
+## Live LLM Loop B (`src/lib/backtest/llm-regime.ts`, wired into the paper snapshot)
+
+The feature-proxy gate is now backed by a **live LLM regime call**: `llmRegimeSizes(features)` passes
+each sleeve's regime features (expected carry, riskZ = signal-spike-vs-norm, sign-stability) to Claude
+(`claude-haiku-4-5` via the OAuth client) → a size [0,1.5] + a one-line rationale per sleeve, with a
+graceful fall-back to the deterministic `featureProxySize` when auth is unavailable. The snapshot logs
+**both** the LLM size and the proxy size every day, so the §7.6 falsification — *does the AI-sized book
+beat proxy / fixed / shuffled?* — runs forward on the accumulating track, asserted by nobody. First
+live run made discriminating calls already (cut fund-WIF at riskZ 2.4 → 0.35; boost calm cal-ETH → 1.2).
+
+## Done since v1
+- ✅ **Honest funding sleeve in the allocator** — swapped funding-only → basis-aware; combined OOS
+  Sharpe corrected from the inflated 11.5 to **4.2** (diversification still beats the best single sleeve
+  3.48, but risk-parity ≈ equal-weight with 3 sleeves; regime overlay still fails §7.6).
+- ✅ **Live LLM Loop B** (above).
+
+## Still open
+- **Per-instrument regime in the backtest** (size each carry leg by its own risk) — the "cut BTC, keep
+  ETH" judgment, falsified the same way.
+- **Add the uncorrelated VRP sleeve to the allocator** — the calendar sleeves are correlated; VRP would
+  lift the diversification benefit beyond the current modest 4.2.
+- **Run the forward §7.6 on the paper track** once it has enough days (LLM-sized vs proxy/fixed/shuffled).

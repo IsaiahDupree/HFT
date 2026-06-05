@@ -136,7 +136,8 @@
     "fetch:funding:binance": "tsx scripts/fetch-funding-binance.ts",
     "backtest:funding-carry": "tsx scripts/backtest-funding-carry.ts",
     "backtest:carry-neutral": "tsx scripts/backtest-carry-neutral.ts",
-    "monitor:reference": "tsx scripts/reference-monitor.ts"
+    "monitor:reference": "tsx scripts/reference-monitor.ts",
+    "record:dydx:cron": "zsh scripts/cron-record-dydx.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

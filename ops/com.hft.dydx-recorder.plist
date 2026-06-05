@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.hft.dydx-recorder — accumulate dYdX L2 recordings for the MM gauntlet.
+  KeepAlive restarts each 30-min chunk on exit → continuous append into the day's capture dir.
+
+  Install:
+    cp ops/com.hft.dydx-recorder.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.hft.dydx-recorder.plist
+  Stop:
+    launchctl unload ~/Library/LaunchAgents/com.hft.dydx-recorder.plist
+
+  TCC NOTE: launchd is blocked from ~/Documents on modern macOS. Set HFT_REPO to a runtime
+  checkout OUTSIDE ~/Documents (e.g. ~/hft-live), OR grant the shell Full Disk Access. Edit the
+  HFT_REPO value below to your checkout path.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hft.dydx-recorder</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>exec "$HFT_REPO/scripts/cron-record-dydx.sh"</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HFT_REPO</key>
+    <string>/Users/isaiahdupree/hft-live</string>
+    <key>DYDX_MARKETS</key>
+    <string>BTC-USD,ETH-USD,SOL-USD</string>
+    <key>DYDX_CHUNK_SEC</key>
+    <string>1800</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/dydx-recorder.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/dydx-recorder.err</string>
+</dict>
+</plist>

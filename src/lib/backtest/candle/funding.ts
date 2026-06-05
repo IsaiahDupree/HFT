@@ -94,6 +94,39 @@ export function basisCarryReturns(spotClose: number[], perpClose: number[], fund
 }
 
 /**
+ * CALENDAR (dated-futures) BASIS CARRY — cash-and-carry on a quarterly future. A contango basis
+ * (future > spot) is locked by long spot + short the future; the future converges to spot at
+ * delivery, so you collect the basis (and the reverse for backwardation). Per day:
+ *   ret = side·(spotRet − futRet) − fee,  side = +1 (long spot/short fut) when annualized basis ≥
+ *   minBasisAnn, −1 (short spot/long fut) when ≤ −minBasisAnn (unless oneSided), else flat.
+ * `dte` = days-to-expiry at each bar; `roll[i+1]` true marks a contract-stitch seam whose price
+ * jump is ARTIFICIAL — that day's price move is skipped so it can't leak into returns. Positions
+ * are dropped in the last `tailSkip` days (basis→0). NO-LOOKAHEAD (side from bar i, realized i→i+1).
+ */
+export function calendarBasisReturns(
+  spot: number[], fut: number[], dte: number[], roll: boolean[],
+  opts: { minBasisAnn?: number; feeBps?: number; tailSkip?: number; oneSided?: boolean } = {},
+): number[] {
+  const minBasisAnn = opts.minBasisAnn ?? 0, feeBps = opts.feeBps ?? 1, tailSkip = opts.tailSkip ?? 2, oneSided = opts.oneSided ?? false;
+  const n = Math.min(spot.length, fut.length, dte.length, roll.length);
+  const out: number[] = [];
+  let side = 0;
+  for (let i = 0; i < n - 1; i++) {
+    const annBasis = spot[i] > 0 && fut[i] > 0 ? (fut[i] / spot[i] - 1) * (365 / Math.max(dte[i], 1)) : 0;
+    let target = 0;
+    if (dte[i] >= tailSkip) {
+      if (annBasis >= minBasisAnn) target = 1;
+      else if (!oneSided && annBasis <= -minBasisAnn) target = -1;
+    }
+    let pnl = 0;
+    if (!roll[i + 1] && spot[i] > 0 && fut[i] > 0) pnl = target * ((spot[i + 1] / spot[i] - 1) - (fut[i + 1] / fut[i] - 1));
+    out.push(pnl - Math.abs(target - side) * 2 * (feeBps / 1e4));
+    side = target;
+  }
+  return out;
+}
+
+/**
  * Per-bar net PERP return of a position series: the price return MINUS the funding paid by a
  * long (a long pays positive funding, receives negative), minus the fee on turnover. This is
  * the carry-correct return model (variantReturns ignores funding). funding[i] is the rate

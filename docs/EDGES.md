@@ -83,11 +83,47 @@ It survives a 4× higher (realistic) fee because the **persistence-selected name
 
 ---
 
+## ✅ EDGE #2 — Calendar (dated-futures) basis carry
+
+**Status: PAPER → deployable.** A second clean *carry* edge, found by the edge-discovery workflow
+and independently verified. Arguably **lower-risk than funding carry** — the convergence is locked.
+
+### The trade
+Binance quarterly delivery futures trade at a premium to spot (contango). Long spot + short the
+dated future (cash-and-carry); at delivery the future **must** converge to spot, so a positive
+basis is harvested as the gap collapses. Unlike funding carry there are no funding cash flows and
+no open-ended basis risk — held to expiry the payoff is **locked at the entry basis**.
+
+### Evidence (real Binance `continuousKlines` front-quarter vs spot, via the proxy)
+| Test | Result |
+|---|---|
+| Annualized basis | **BTC +8.07% (contango 100% of days), ETH +7.66% (98%)** |
+| Best variant (contango>0, 1bp) | Sharpe **3.06**, **+8.5%/yr**, +24.7% over 999d |
+| PBO / DSR | **PBO 0.00, DSR 1.00** |
+| Carry signature | realized return == observed basis (a *true* carry, not an artifact) |
+| Advisor | **PAPER (72)** — clean metrics, downgraded only for the 5-cell scan; modest absolute return |
+
+No-lookahead verified independently: side from the basis at i, realized i→i+1, and the
+contract-**roll seams are skipped** so the stitch jump can't leak into returns. Core math extracted
+to the tested `calendarBasisReturns` (pure, +5 tests). Run: `npm run backtest:calendar-basis`.
+
+### Caveats
+- ~8%/yr is modest; the daily MTM is volatile (the Sharpe reflects basis fluctuation, not the
+  locked terminal payoff). Roll/execution costs + margin on the short-future leg eat into it.
+- Liquid on BTC/ETH (deep quarterly futures) — good capacity, unlike the illiquid funding-carry alts.
+
+---
+
 ## Adjacent variants (real but marginal)
 
 - **Cross-venue funding arb** (Binance − Hyperliquid, `backtest:funding-xvenue`): the venue funding
   *spread* is small (~2.5 bps/day, mostly arbed away) → only **~3% APR at maker fees**, negative at
   3bp → **PAPER**. Lower-risk than single-venue (perp-perp basis is tight) but lower-return.
+- **Funding-as-directional-signal** (fade crowded funding, `scripts/_discover-funding-as-return-signal.ts`):
+  Sharpe 1.41, OOS held, *not* pure inverse-beta (residual 0.89), block-shuffle control survives
+  (p=0.023) — **but** PBO 0.40, DSR 0.81, the sign-flip control fails (p=0.115), and the whole window
+  is a single ~1.4-yr alt bear market → **PAPER, do not size**. A genuinely-not-just-beta timing
+  signal that fails the overfit gauntlet on too-short a sample.
 
 ---
 
@@ -101,6 +137,18 @@ It survives a 4× higher (realistic) fee because the **persistence-selected name
 | Regime-conditional "defensive" cells | **rejected** | 66 "edges" → 0 survive Bonferroni; permutation null beats the real pattern; was a warehouse-splice artifact |
 | Funding carry on *majors* | **STAND_ASIDE** | fee-dominated — funding too small vs fees |
 | dYdX market-making (inventory MM) | **REPAIR_FIRST** | fills too rarely on deep books (11 maker fills / 4595s) to capture spread |
+| Cross-sectional funding factor (L low / S high) | **STAND_ASIDE** | gross sign right but fee-dominated (~2×/day turnover); PBO 0.86, shuffle p=0.24 |
+| Funding settlement seasonality (time-of-day) | **falsified** | the 3 slots are identical (3.60–3.66%/yr, 0.16 bp spread) — no clock-hour edge |
+| Realized-vol mean-reversion (daily) | **falsified** | vol *persists* — a top-decile spike predicts ~2.45× **higher** next-day vol |
+| Open-interest × funding squeeze | **rejected** | shuffle p=0.92 (a random reorder out-Sharpes the real timing) — annualization mirage on 31 days |
+| Aggregate-funding market timing (breadth) | **STAND_ASIDE** | net-negative OOS — de-grossing a −68% bear basket is defensive beta-reduction, not alpha |
+
+### The edge-discovery workflow (2026-06-05)
+A 7-family fan-out, each agent building a real no-lookahead backtest through the gauntlet + advisor.
+**Result: 5 cleanly rejected, 2 PAPER (calendar basis = the keeper), 0 BUY.** The meta-finding the
+whole project keeps confirming: **CARRY / income edges are real** (funding carry, calendar basis);
+**TIMING / directional edges are beta or noise** (every directional family above failed a control or
+the overfit gate). Reproducible negatives kept at `scripts/_discover-*.ts`.
 
 **The lesson encoded:** big ROI ≠ edge. A +12,614% backtest was bull-market beta that *underperformed*
 buy-and-hold. A "regime edge" found by scanning is a hypothesis count, not a result. The advisor

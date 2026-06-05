@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fundingGate, fundingCarrySignal, netFundingReturns, deltaNeutralCarryReturns, basisCarryReturns } from "@/lib/backtest/candle/funding";
+import { fundingGate, fundingCarrySignal, netFundingReturns, deltaNeutralCarryReturns, basisCarryReturns, calendarBasisReturns } from "@/lib/backtest/candle/funding";
 import type { DailyCandle } from "@/lib/backtest/candle/engine";
 
 const candles = (closes: number[]): DailyCandle[] =>
@@ -109,5 +109,37 @@ describe("basisCarryReturns — basis-aware carry (the risk-honest version)", ()
     const base = basisCarryReturns([100, 101, 102, 103], [100, 101, 102, 103], [0.01, 0.01, 0.01], { feeBps: 2 });
     const out2 = basisCarryReturns([100, 101, 102, 999], [100, 101, 102, 999], [0.01, 0.01, 0.01], { feeBps: 2 });
     expect(out2.slice(0, 2)).toEqual(base.slice(0, 2));
+  });
+});
+
+describe("calendarBasisReturns — dated-futures cash-and-carry", () => {
+  const noRoll = (n: number) => new Array(n).fill(false);
+  it("harvests contango: long spot/short fut gains as the future converges DOWN to spot", () => {
+    // fut premium 108→104 over a clean day, spot flat → +~3.7% on the short-fut leg
+    const out = calendarBasisReturns([100, 100], [108, 104], [90, 89], noRoll(2), { minBasisAnn: 0, feeBps: 0, tailSkip: 2 });
+    expect(out[0]).toBeCloseTo((0) - (104 / 108 - 1), 9); // spotRet 0 − futRet(neg) > 0
+    expect(out[0]).toBeGreaterThan(0);
+  });
+  it("goes flat below the basis threshold and within tailSkip of expiry", () => {
+    // tiny basis (1% over 90d ≈ 4%/yr) below a 10%/yr threshold → flat
+    expect(calendarBasisReturns([100, 100], [101, 100.5], [90, 89], noRoll(2), { minBasisAnn: 0.10, feeBps: 0 })[0]).toBe(0);
+    // dte 1 < tailSkip 2 → flat even with fat basis
+    expect(calendarBasisReturns([100, 100], [110, 105], [1, 0], noRoll(2), { minBasisAnn: 0, tailSkip: 2, feeBps: 0 })[0]).toBe(0);
+  });
+  it("SKIPS the roll-seam day so the artificial stitch jump can't leak into returns", () => {
+    // a huge fut jump on the seam day → if not skipped it would dominate; roll[i+1]=true → pnl 0
+    const out = calendarBasisReturns([100, 100], [108, 9999], [90, 89], [false, true], { minBasisAnn: 0, feeBps: 0 });
+    expect(out[0]).toBe(0);
+  });
+  it("backwardation flips the side unless oneSided", () => {
+    const bk = calendarBasisReturns([100, 100], [92, 96], [90, 89], noRoll(2), { minBasisAnn: 0, feeBps: 0 });
+    expect(bk[0]).toBeGreaterThan(0); // short spot/long fut gains as fut rises to spot
+    expect(calendarBasisReturns([100, 100], [92, 96], [90, 89], noRoll(2), { minBasisAnn: 0, feeBps: 0, oneSided: true })[0]).toBeCloseTo(0, 9);
+  });
+  it("is no-lookahead (a far-future bar can't change earlier returns)", () => {
+    const s = [100, 101, 102, 103], f = [108, 106, 104, 102], dte = [120, 119, 118, 117];
+    const base = calendarBasisReturns(s, f, dte, noRoll(4), { minBasisAnn: 0, feeBps: 1 });
+    const f2 = [...f]; f2[3] = 9999;
+    expect(calendarBasisReturns(s, f2, dte, noRoll(4), { minBasisAnn: 0, feeBps: 1 }).slice(0, 2)).toEqual(base.slice(0, 2));
   });
 });

@@ -12,6 +12,7 @@ import "./_env.ts";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { planCarryLegs, bookSafetyCheck, DEFAULT_LIMITS, type CarryOpp, type SpotVenue } from "../src/lib/exec/carry-plan.ts";
+import { fundingStats } from "../src/lib/exec/funding-stats.ts";
 
 const num = (n: string, d: number): number => { const i = process.argv.indexOf(n); return i >= 0 && process.argv[i + 1] ? Number(process.argv[i + 1]) : d; };
 const capital = num("--capital", 1000);
@@ -32,10 +33,9 @@ for (const f of files) {
   const rates = readFileSync(resolve(fdir, f), "utf8").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => (JSON.parse(l) as { rate: number }).rate);
   if (rates.length < 90) continue;
   const coin = f.replace(".binance.jsonl", "");
-  const pos = rates.filter((r) => r > 0).length, persistence = Math.max(pos, rates.length - pos) / rates.length;
-  const recent = rates.slice(-21), meanHourlyEquiv = recent.reduce((a, r) => a + r, 0) / recent.length; // 8-hourly mean
-  const fundingApr = meanHourlyEquiv * 3 * 365 * 100; // signed APR
-  opps.push({ coin, fundingApr, persistence, perpVenue: "hyperliquid", spotVenues: SPOT_LISTED[coin] ?? [] });
+  // Binance funding is 8-hourly → 3×365 periods/yr. Gate on the DURABLE (median) rate, not the spike-prone mean.
+  const { persistence, durableApr } = fundingStats(rates, 3 * 365);
+  opps.push({ coin, fundingApr: durableApr, persistence, perpVenue: "hyperliquid", spotVenues: SPOT_LISTED[coin] ?? [] });
 }
 opps.sort((a, b) => b.persistence * Math.abs(b.fundingApr) - a.persistence * Math.abs(a.fundingApr));
 

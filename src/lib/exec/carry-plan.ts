@@ -9,12 +9,14 @@
  */
 
 export type PerpVenue = "dydx" | "hyperliquid";
-export type SpotVenue = "coinbase" | "binanceus";
+export type SpotVenue = "coinbase" | "binanceus" | "hyperliquid";
 export type Side = "short" | "long";
 
 export type CarryOpp = {
   coin: string;
-  fundingApr: number;      // signed annualized funding (positive = longs pay)
+  /** signed annualized funding (positive = longs pay). MUST be the DURABLE (median) rate, not the mean —
+   *  see fundingStats: a spike-inflated mean makes a floor-level carry look fat and falsely pass the gate. */
+  fundingApr: number;
   persistence: number;     // 0.5..1, recent sign-stability
   perpVenue: PerpVenue;
   /** spot venues that LIST this asset (for the hedge leg). Empty ⇒ unhedgeable. */

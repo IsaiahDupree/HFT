@@ -71,21 +71,21 @@ const { readFileSync, existsSync, readdirSync } = await import("node:fs");
 const { resolve } = await import("node:path");
 const fdir = resolve(process.cwd(), "data", "funding");
 const altFiles = existsSync(fdir) ? readdirSync(fdir).filter((f) => f.endsWith(".binance.jsonl")) : [];
-type Alt = { coin: string; side: string; persistence: number; meanApr: number; recentApr: number; n: number };
+const { fundingStats } = await import("../src/lib/exec/funding-stats.ts");
+type Alt = { coin: string; side: string; persistence: number; durableApr: number; meanApr: number; recentApr: number; n: number };
 const alts: Alt[] = [];
 for (const f of altFiles) {
   try {
     const rates = readFileSync(resolve(fdir, f), "utf8").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => (JSON.parse(l) as { rate: number }).rate);
     if (rates.length < 90) continue;
-    const pos = rates.filter((r) => r > 0).length, persistence = Math.max(pos, rates.length - pos) / rates.length;
-    const meanApr = (rates.reduce((a, r) => a + Math.abs(r), 0) / rates.length) * 3 * 365 * 100; // Binance 3/day
-    const recent = rates.slice(-21), recentApr = (recent.reduce((a, r) => a + Math.abs(r), 0) / recent.length) * 3 * 365 * 100;
-    alts.push({ coin: f.replace(".binance.jsonl", ""), side: pos > rates.length / 2 ? "SHORT perp" : "LONG perp", persistence, meanApr, recentApr, n: rates.length });
+    const s = fundingStats(rates, 3 * 365); // Binance 8-hourly. durable = median (spike-resistant), mean = upside only
+    alts.push({ coin: f.replace(".binance.jsonl", ""), side: s.meanApr >= 0 ? "SHORT perp" : "LONG perp", persistence: s.persistence, durableApr: Math.abs(s.durableApr), meanApr: Math.abs(s.meanApr), recentApr: Math.abs(s.recentApr), n: s.n });
   } catch { /* */ }
 }
-alts.sort((a, b) => b.persistence * b.meanApr - a.persistence * a.meanApr);
+alts.sort((a, b) => b.persistence * b.durableApr - a.persistence * a.durableApr); // rank by DURABLE, not spike
 console.log(`\n  Binance/HL PERSISTENCE ALTS (the deployable funding-carry edge — needs proxy perp + spot hedge):`);
-console.log(`  ${"coin".padEnd(10)} ${"side".padEnd(11)} ${"persist".padEnd(8)} ${"meanAPR".padEnd(9)} recentAPR`);
-for (const a of alts.slice(0, 8)) console.log(`    ${a.coin.padEnd(8)} ${a.side.padEnd(11)} ${`${(a.persistence * 100).toFixed(0)}%`.padEnd(8)} ${`${a.meanApr.toFixed(0)}%`.padEnd(9)} ${a.recentApr.toFixed(0)}%`);
+console.log(`  durAPR = durable (median) funding · meanAPR = spike-upside only (not bankable)`);
+console.log(`  ${"coin".padEnd(10)} ${"side".padEnd(11)} ${"persist".padEnd(8)} ${"durAPR".padEnd(8)} ${"mean(spike)".padEnd(12)} recentAPR`);
+for (const a of alts.slice(0, 8)) console.log(`    ${a.coin.padEnd(8)} ${a.side.padEnd(11)} ${`${(a.persistence * 100).toFixed(0)}%`.padEnd(8)} ${`${a.durableApr.toFixed(0)}%`.padEnd(8)} ${`${a.meanApr.toFixed(0)}%`.padEnd(12)} ${a.recentApr.toFixed(0)}%`);
 console.log(`\n  RISK: funding can flip (persistence mitigates), perp-spot basis can widen (a squeeze is the tail), borrow/size limited.`);
 console.log(`  Start tiny ($200-1k/name), confirm the hedge fills, then scale. This is YIELD, not a moonshot.\n`);

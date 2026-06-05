@@ -11,7 +11,8 @@ import "./_env.ts";
 import { proxiedFetch } from "../src/lib/data/proxy-fetch.ts";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { calendarBasisReturns, deltaNeutralCarryReturns } from "../src/lib/backtest/candle/funding.ts";
+import { calendarBasisReturns, basisCarryReturns } from "../src/lib/backtest/candle/funding.ts";
+import { fetchBinanceKlines, fetchBinancePerpKlines } from "../src/lib/data/binance.ts";
 import { sharpe } from "../src/lib/backtest/candle/stats.ts";
 import { rollingStd, trailingZ, regimeGateSize, applySizing, shuffleSizes } from "../src/lib/backtest/regime-size.ts";
 import { equalWeights, inverseVolWeights, applyAllocation, normalizeWeights, correlationMatrix } from "../src/lib/backtest/edge-allocator.ts";
@@ -40,26 +41,39 @@ async function calendarSleeve(pair: string): Promise<{ days: number[]; rets: num
 // ---- funding carry sleeve (persistence alts), then a SQUEEZE GATE on its own trailing vol ----
 const fdir = resolve(process.cwd(), "data", "funding");
 const NAMES = ["LAB", "BEAT", "VIC", "KOMA", "HOME", "PORTAL", "AERGO", "GOAT", "ACT", "PEOPLE", "SEI", "ENA", "WIF", "PNUT", "TRX", "DASH"];
-function fundingSleeve(): { days: number[]; rets: number[]; gated: number[] } {
+function dailyFunding(c: string): Map<number, number> {
+  const m = new Map<number, number>();
+  for (const l of readFileSync(resolve(fdir, `${c}.binance.jsonl`), "utf8").split("\n").map((x) => x.trim()).filter(Boolean)) { const r = JSON.parse(l) as { time: number; rate: number }; const d = Math.floor(r.time / DAY) * DAY; m.set(d, (m.get(d) ?? 0) + r.rate); }
+  return m;
+}
+/** BASIS-AWARE funding carry sleeve: real spot+perp price legs (not assumed to cancel) → honest Sharpe. */
+async function fundingSleeve(): Promise<{ days: number[]; rets: number[]; gated: number[] }> {
   const avail = existsSync(fdir) ? readdirSync(fdir).filter((f) => f.endsWith(".binance.jsonl")).map((f) => f.replace(".binance.jsonl", "")) : [];
   const coins = NAMES.filter((c) => avail.includes(c));
-  const per = coins.map((c) => {
-    const m = new Map<number, number>();
-    for (const l of readFileSync(resolve(fdir, `${c}.binance.jsonl`), "utf8").split("\n").map((x) => x.trim()).filter(Boolean)) { const r = JSON.parse(l) as { time: number; rate: number }; const d = Math.floor(r.time / DAY) * DAY; m.set(d, (m.get(d) ?? 0) + r.rate); }
-    const days = [...m.keys()].sort((a, b) => a - b), spread = days.map((d) => m.get(d)!);
-    const cr = deltaNeutralCarryReturns(spread, { minFunding: 0.0002, feeBps: 4.22 }); // realistic data-measured fee
-    return new Map(days.slice(0, -1).map((d, i) => [d, cr[i]]));
-  });
+  const per: Array<Map<number, number>> = [];
+  for (const c of coins) {
+    try {
+      const fund = dailyFunding(c);
+      const spot = await fetchBinanceKlines(`${c}USDT`, "1d", { limit: 1000 });
+      const perp = await fetchBinancePerpKlines(`${c}USDT`, "1d", { limit: 1000 });
+      const pMap = new Map(perp.map((k) => [Math.floor(k.start_unix / DAY) * DAY, k.close]));
+      const aligned = spot.map((k) => Math.floor(k.start_unix / DAY) * DAY).filter((d) => pMap.has(d) && spot.find((s) => Math.floor(s.start_unix / DAY) * DAY === d));
+      const days = [...new Set(aligned)].sort((a, b) => a - b);
+      if (days.length < 60) continue;
+      const sMap = new Map(spot.map((k) => [Math.floor(k.start_unix / DAY) * DAY, k.close]));
+      const spotC = days.map((d) => sMap.get(d)!), perpC = days.map((d) => pMap.get(d)!), fundArr = days.map((d) => fund.get(d));
+      const bc = basisCarryReturns(spotC, perpC, fundArr, { minFunding: 0.0002, feeBps: 4.22 }); // basis-aware + realistic fee
+      per.push(new Map(days.slice(0, -1).map((d, i) => [d, bc[i]])));
+    } catch { /* coin without perp/spot klines → skip */ }
+  }
   const allDays = [...new Set(per.flatMap((p) => [...p.keys()]))].sort((a, b) => a - b);
   const rets = allDays.map((d) => { let s = 0, n = 0; for (const p of per) { const r = p.get(d); if (r != null) { s += r; n++; } } return n ? s / n : 0; });
-  // SQUEEZE GATE: cut the funding carry when its own trailing vol z is high (stress/squeeze regime), NO-LOOKAHEAD.
   const z = [NaN, ...trailingZ(rets, volWin * 2).slice(0, -1)];
   const gated = applySizing(rets, regimeGateSize(z, { cutZ: 1, band: 1.5, floor: 0.3 }));
   return { days: allDays, rets, gated };
 }
 
-const [calBTC, calETH] = await Promise.all([calendarSleeve("BTCUSDT"), calendarSleeve("ETHUSDT")]);
-const fund = fundingSleeve();
+const [calBTC, calETH, fund] = await Promise.all([calendarSleeve("BTCUSDT"), calendarSleeve("ETHUSDT"), fundingSleeve()]);
 const sleeves = [{ name: "cal-BTC", s: calBTC }, { name: "cal-ETH", s: calETH }, { name: "fund-alts(gated)", s: { days: fund.days, rets: fund.gated } }];
 
 // ---- align on the common day window ----

@@ -15,6 +15,8 @@ import { mkdirSync, existsSync, readFileSync, appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { proxiedFetch } from "../src/lib/data/proxy-fetch.ts";
 import { fetchBinanceFunding } from "../src/lib/data/binance.ts";
+import { llmRegimeSizes, llmRegimeAvailable, featureProxySize, type SleeveFeature } from "../src/lib/backtest/llm-regime.ts";
+import { trailingZ } from "../src/lib/backtest/regime-size.ts";
 
 const DAY = 86_400;
 const dir = resolve(process.cwd(), "data", "paper");
@@ -24,8 +26,8 @@ const show = process.argv.includes("--show");
 const nowSec = Math.floor(Date.now() / 1000);
 const today = new Date().toISOString().slice(0, 10);
 
-type Sleeve = { name: string; kind: "calendar" | "funding"; signal: number; expectedDailyRet: number; entry: Record<string, number> };
-type Rec = { date: string; ts: number; sleeves: Sleeve[] };
+type Sleeve = { name: string; kind: "calendar" | "funding"; signal: number; expectedDailyRet: number; riskZ: number; stability: number; entry: Record<string, number>; regime?: { proxy: number; llm: number; rationale: string; source: string } };
+type Rec = { date: string; ts: number; sleeves: Sleeve[]; loopB?: string };
 
 function loadLog(): Rec[] {
   if (!existsSync(LOG)) return [];
@@ -62,27 +64,42 @@ function realizedReturn(prior: Sleeve, cur: Rec): number | null {
 // ---- calendar sleeve: current spot + front-quarter future ----
 function lastFri(y: number, m: number): number { const d = new Date(Date.UTC(y, m + 1, 0, 8, 0, 0)); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() - 5 + 7) % 7)); return Math.floor(d.getTime() / 1000); }
 function frontExp(t: number): number { const y0 = new Date(t * 1000).getUTCFullYear(); for (let y = y0 - 1; y <= y0 + 1; y++) for (const m of [2, 5, 8, 11]) { const e = lastFri(y, m); if (e > t) return e; } return t; }
-async function lastClose(url: string): Promise<number> { const j = (await (await proxiedFetch(url, { signal: AbortSignal.timeout(20_000) })).json()) as Array<Array<number | string>>; return Number(j[j.length - 1][4]); }
+async function closeSeries(url: string): Promise<number[]> { const j = (await (await proxiedFetch(url, { signal: AbortSignal.timeout(20_000) })).json()) as Array<Array<number | string>>; return j.map((k) => Number(k[4])); }
+const lastZAbs = (x: number[], n: number) => { const z = trailingZ(x, Math.min(n, x.length)); return Math.abs(z[z.length - 1] || 0); };
 
 const sleeves: Sleeve[] = [];
 for (const pair of ["BTCUSDT", "ETHUSDT"]) {
   try {
-    const spot = await lastClose(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1d&limit=2`);
-    const fut = await lastClose(`https://fapi.binance.com/fapi/v1/continuousKlines?pair=${pair}&contractType=CURRENT_QUARTER&interval=1d&limit=2`);
+    const spotS = await closeSeries(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1d&limit=20`);
+    const futS = await closeSeries(`https://fapi.binance.com/fapi/v1/continuousKlines?pair=${pair}&contractType=CURRENT_QUARTER&interval=1d&limit=20`);
+    const n = Math.min(spotS.length, futS.length); if (n < 5) continue;
+    const spot = spotS[spotS.length - 1], fut = futS[futS.length - 1];
     const dte = Math.max(1, (frontExp(nowSec) - nowSec) / DAY);
     const annBasis = (fut / spot - 1) * (365 / dte);
-    sleeves.push({ name: `cal-${pair.replace("USDT", "")}`, kind: "calendar", signal: annBasis, expectedDailyRet: annBasis / 365, entry: { spot, fut, dte } });
+    const basis = Array.from({ length: n }, (_, i) => futS[futS.length - n + i] / spotS[spotS.length - n + i] - 1);
+    const riskZ = lastZAbs(basis, 14), stability = basis.filter((b) => b > 0).length / basis.length; // steady contango = stable
+    sleeves.push({ name: `cal-${pair.replace("USDT", "")}`, kind: "calendar", signal: annBasis, expectedDailyRet: annBasis / 365, riskZ, stability, entry: { spot, fut, dte } });
   } catch (e) { console.log(`  ${pair} calendar skip: ${(e as Error).message.slice(0, 60)}`); }
 }
-// ---- funding sleeve: current funding on a few persistence alts (short collects when positive) ----
 for (const coin of ["LAB", "BEAT", "ENA", "WIF"]) {
   try {
-    const fr = await fetchBinanceFunding(`${coin}USDT`, { limit: 3 });
-    if (!fr.length) continue;
-    const rate = fr[fr.length - 1].rate;            // latest settled funding
-    const harvest = Math.abs(rate) >= 0.0002 ? Math.abs(rate) : 0; // harvest only fat funding
-    sleeves.push({ name: `fund-${coin}`, kind: "funding", signal: harvest, expectedDailyRet: harvest * 3, entry: { rate } });
+    const fr = await fetchBinanceFunding(`${coin}USDT`, { limit: 60 });
+    if (fr.length < 5) continue;
+    const rates = fr.map((x) => x.rate), rate = rates[rates.length - 1];
+    const harvest = Math.abs(rate) >= 0.0002 ? Math.abs(rate) : 0;
+    const riskZ = lastZAbs(rates, 21);
+    const pos = rates.filter((x) => x > 0).length, stability = Math.max(pos, rates.length - pos) / rates.length; // sign consistency
+    sleeves.push({ name: `fund-${coin}`, kind: "funding", signal: harvest, expectedDailyRet: harvest * 3, riskZ, stability, entry: { rate } });
   } catch { /* no perp */ }
+}
+
+// ---- Loop B: live LLM regime sizing (falls back to the deterministic feature-proxy) ----
+const features: SleeveFeature[] = sleeves.map((s) => ({ name: s.name, kind: s.kind, expectedDailyBp: s.expectedDailyRet * 1e4, riskZ: s.riskZ, stability: s.stability }));
+const { sizes, usedLlm } = await llmRegimeSizes(features);
+const sizeByName = new Map(sizes.map((x) => [x.name, x]));
+for (const s of sleeves) {
+  const chosen = sizeByName.get(s.name); const proxy = featureProxySize(features.find((f) => f.name === s.name)!);
+  s.regime = { proxy: +proxy.toFixed(3), llm: chosen?.source === "llm" ? +chosen.size.toFixed(3) : +proxy.toFixed(3), rationale: chosen?.rationale ?? "proxy", source: chosen?.source ?? "proxy" };
 }
 
 const log = loadLog();
@@ -92,7 +109,7 @@ if (log.length) {
   const tmp: Rec = { date: today, ts: nowSec, sleeves };
   for (const s of prev.sleeves) { const r = realizedReturn(s, tmp); if (r != null) console.log(`    ${s.name.padEnd(14)} expected ${(s.expectedDailyRet * 1e4).toFixed(1)}bp → realized ${(r * 1e4).toFixed(1)}bp`); }
 }
-appendFileSync(LOG, JSON.stringify({ date: today, ts: nowSec, sleeves } satisfies Rec) + "\n");
-console.log(`\ncarry-paper-snapshot ${today} — logged ${sleeves.length} sleeves → data/paper/carry-log.jsonl`);
-for (const s of sleeves) console.log(`  ${s.name.padEnd(14)} signal ${s.kind === "calendar" ? `${(s.signal * 100).toFixed(1)}% ann basis` : `${(s.signal * 1e4).toFixed(1)}bp funding`}  expected ${(s.expectedDailyRet * 1e4).toFixed(1)}bp/day`);
+appendFileSync(LOG, JSON.stringify({ date: today, ts: nowSec, sleeves, loopB: usedLlm ? "llm" : "proxy" } satisfies Rec) + "\n");
+console.log(`\ncarry-paper-snapshot ${today} — logged ${sleeves.length} sleeves (Loop B: ${usedLlm ? "LLM" : "feature-proxy"}) → data/paper/carry-log.jsonl`);
+for (const s of sleeves) console.log(`  ${s.name.padEnd(14)} ${s.kind === "calendar" ? `${(s.signal * 100).toFixed(1)}% basis` : `${(s.signal * 1e4).toFixed(1)}bp fund`}  exp ${(s.expectedDailyRet * 1e4).toFixed(1)}bp/d  riskZ ${s.riskZ.toFixed(1)} stab ${(s.stability * 100).toFixed(0)}%  → size ${s.regime!.source === "llm" ? s.regime!.llm : s.regime!.proxy} (${s.regime!.source})${s.regime!.source === "llm" ? ` "${s.regime!.rationale.slice(0, 50)}"` : ""}`);
 console.log(`\n  run daily (launchd) to accumulate; check with: npm run carry:paper-snapshot -- --show\n`);

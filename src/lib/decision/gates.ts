@@ -24,6 +24,7 @@
  */
 import { Gate, type DecisionContext, type GateResult } from "./types";
 import { estimateSlippage } from "./slippage";
+import { riskAdjustedMultiplier } from "./risk-sizing";
 
 // ─── data quality ──────────────────────────────────────────────────────────
 
@@ -177,12 +178,13 @@ export function edgeGate(ctx: DecisionContext, cfg: EdgeConfig = {}): GateResult
  * this pipeline. We surface a passing GateResult so the pipeline gives the
  * risk dimension non-zero weight; v2 (Phase 9) will wrap the real engines.
  */
-export function riskGate(_ctx: DecisionContext): GateResult {
-  return Gate.pass(
-    "risk",
-    1.0,
-    "v1 stub — existing capsules/gate + risk-engine still enforce per-order. Phase 9 wraps the Global Risk Governor.",
-  );
+export function riskGate(ctx: DecisionContext): GateResult {
+  // Real uncertainty-/risk-budget-adjusted SIZING (was a v1 pass-through stub). Continuous size_multiplier, not
+  // reject/pass: cap the order at a fraction of available book DEPTH so it can actually fill/unwind. The
+  // DRAWDOWN + CORRELATION factors of riskAdjustedMultiplier activate automatically once live capsule daily-PnL
+  // and correlated-exposure are threaded into DecisionContext (TODO) — until then this does liquidity sizing.
+  const { multiplier, reasons } = riskAdjustedMultiplier({ sizeUsd: ctx.proposal.sizeUsd, liquidityUsd: ctx.snapshot?.liquidityUsd });
+  return Gate.pass("risk", multiplier, `risk sizing — ${reasons.join("; ")}`);
 }
 
 // ─── execution ─────────────────────────────────────────────────────────────

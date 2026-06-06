@@ -63,6 +63,8 @@ export function formatRecommendation(r: TradeRecommendation): string {
   ].join("\n");
 }
 
+import { applyRiskSizing } from "./risk-sizing";
+
 export type CarryRecInput = { instrument: string; netApr: number; grossApr: number; executable: boolean; persistence?: number; depthUsd?: number | null; bankrollUsd: number; tailRisk?: string; copySignal?: string | null };
 /**
  * Build a carry/basis recommendation. DEPLOY only when executable AND net edge clears; confidence from
@@ -72,7 +74,9 @@ export function carryRecommendation(c: CarryRecInput): TradeRecommendation {
   const confidence = Math.max(0, Math.min(1, (c.persistence ?? 0.7))) * (c.executable ? 1 : 0.4);
   // APR→Kelly-ish fraction: treat net APR as the per-period edge; cap the implied fraction so 30%+ APR ≈ full cap.
   const kellyish = Math.max(0, c.netApr) / 30;          // 30% net APR maps to the per-name cap
-  const size = c.executable ? suggestSize(kellyish, confidence, { bankrollUsd: c.bankrollUsd }) : 0;
+  const baseSize = c.executable ? suggestSize(kellyish, confidence, { bankrollUsd: c.bankrollUsd }) : 0;
+  // risk-budget scaling: cap the size at a fraction of the hedge's available DEPTH (can't fill/unwind otherwise)
+  const size = applyRiskSizing(baseSize, { sizeUsd: baseSize, liquidityUsd: c.depthUsd ?? undefined });
   const finalAction: FinalAction = c.executable && c.netApr > 0 && size > 0 ? "DEPLOY" : Math.abs(c.grossApr) >= 13 ? "WATCH" : "STAND_ASIDE";
   return {
     market: c.instrument, impliedProb: null, estimatedProb: null, edgePct: c.netApr,

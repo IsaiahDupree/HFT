@@ -47,7 +47,8 @@ export function falsifyConsensus(
   opts: ConsensusBacktestOpts = {},
   K = 1000,
   seed = 7,
-  survivorshipSelected = false,
+  survivorshipSelected = true,   // SAFE DEFAULT (audit footgun fix): assume outcome-conditioned → cap at suspect.
+                                 // A caller with a genuinely forward / independent-resolution set must pass false explicitly.
 ): ConsensusFalsification {
   const real = backtestConsensusSignals(signals, resolved, opts);
   const realBucket = real.buckets.find((b) => b.slippage_bps === 100) ?? real.buckets[0];

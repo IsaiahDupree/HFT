@@ -13,7 +13,7 @@ describe("falsifyConsensus — balanced control (skeptic random/flip + advocate 
   it("REAL EDGE: consensus right 80% at a 0.50 price beats BOTH random direction AND fair odds", () => {
     const signals: ConsensusSignal[] = [], resolved = new Map<string, ResolvedMarket>();
     for (let i = 0; i < 10; i++) { signals.push(sig(`m${i}`, "yes", 0.5)); resolved.set(...mkt(`m${i}`, i < 8 ? 0 : 1)); } // 8 of 10 resolve YES (dir right)
-    const f = falsifyConsensus(signals, resolved, { minDistinctSignals: 5 }, 500);
+    const f = falsifyConsensus(signals, resolved, { minDistinctSignals: 5 }, 500, 7, false); // false = clean/forward set
     expect(f.realWinRate).toBeCloseTo(0.8, 5);
     expect(f.impliedWinRate).toBeCloseTo(0.5, 5);
     expect(f.edgeVsImplied).toBeGreaterThan(0.2);     // beats the price by ~30pts

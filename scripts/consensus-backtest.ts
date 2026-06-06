@@ -166,7 +166,10 @@ console.log(`\nresult: ${result.signals_used}/${result.signals_seen} scorable, b
 console.log(`verdict: ${result.verdict.rating} — ${result.verdict.reason}`);
 
 // FALSIFICATION (the missing control): is the consensus DIRECTION informative, and does it beat the PRICE?
-const fals = falsifyConsensus(signals, resolvedByCondition, { sizeUsd: SIZE_USD, minDistinctSignals: 5 }, 1000);
+// survivorshipSelected=FALSE: this is the FORWARD path — markets resolve AFTER the signal and `won` comes from
+// INDEPENDENT Gamma resolution (not the cohort's own positions), so it is not outcome-circular. (Cohort is still
+// PnL-selected, but a forward independent-resolution test of known-good traders' agreement is legitimate.)
+const fals = falsifyConsensus(signals, resolvedByCondition, { sizeUsd: SIZE_USD, minDistinctSignals: 5 }, 1000, 7, false);
 console.log(`\nfalsification (n=${fals.n}):`);
 console.log(`  real PnL ${(fals.realPnlPct * 100).toFixed(1)}% · win ${(fals.realWinRate * 100).toFixed(0)}% | flipped ${(fals.flippedPnlPct * 100).toFixed(1)}% | random mean ${(fals.randomMeanPnlPct * 100).toFixed(1)}%`);
 console.log(`  SKEPTIC random-direction p = ${fals.randomP.toFixed(3)} ${fals.randomP < 0.05 ? "✓ direction informative" : "✗ a coin-flip does as well"}`);

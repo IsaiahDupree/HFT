@@ -16,8 +16,10 @@ import { planCarryLegs, type CarryOpp } from "../src/lib/exec/carry-plan.ts";
 import { planCalendarLegs, type CalendarOpp } from "../src/lib/exec/calendar-plan.ts";
 import { triggerState, isEscalation, FUNDING_TRIGGER, CALENDAR_TRIGGER, type TriggerState } from "../src/lib/exec/carry-triggers.ts";
 import { openCarryDb, resolveCarryDbPath, insertSnapshot, insertAlert, lastStateFor, recentAlerts, snapshotCount } from "../src/lib/exec/carry-monitor-db.ts";
+import { carryRecommendation, formatRecommendation } from "../src/lib/decision/recommendation.ts";
 
 const show = process.argv.includes("--show");
+const BANKROLL = (() => { const i = process.argv.indexOf("--bankroll"); return i >= 0 && process.argv[i + 1] ? Number(process.argv[i + 1]) : Number(process.env.BANKROLL_USD ?? 1000); })();
 const HL = "https://api.hyperliquid.xyz/info";
 const IDX = "https://indexer.dydx.trade/v4";
 const DBT = "https://www.deribit.com/api/v2/public";
@@ -142,10 +144,12 @@ if (show) {
   const cands = (await Promise.all([collectHL(), collectDydx(), collectDeribit()])).flat();
   const byState: Record<TriggerState, number> = { off: 0, watch: 0, armed: 0 };
   const escalations: string[] = [];
+  const armedCands: typeof cands = [];
   for (const c of cands) {
     const cfg = c.strategy === "funding" ? FUNDING_TRIGGER : CALENDAR_TRIGGER;
     const { state, reason } = triggerState(c.grossApr, c.executable, cfg);
     byState[state]++;
+    if (state === "armed") armedCands.push(c);
     const prev = lastStateFor(db, c.strategy, c.candidate);
     if (isEscalation(prev, state)) {
       const msg = `${c.candidate} ${prev ?? "new"}→${state}: ${reason}`;
@@ -161,6 +165,15 @@ if (show) {
   for (const c of fattest) console.log(`    ${c.strategy.padEnd(9)} ${c.venue.padEnd(11)} ${c.candidate.padEnd(14)} gross ${`${c.grossApr >= 0 ? "+" : ""}${c.grossApr.toFixed(1)}%`.padEnd(8)} net ${`${c.netApr.toFixed(1)}%`.padEnd(8)} ${c.executable ? "executable" : "blocked"}`);
   if (escalations.length) { console.log(`\n  🔔 ${escalations.length} ESCALATION(S):`); for (const e of escalations) console.log(`    ${e}`); }
   else console.log(`\n  no escalations — all candidates ≤ their prior state (expected: regime still thin).`);
+  // AFFIRMATIVE recommendations (the pro-trading half): for ARMED candidates, emit a "take the trade" verdict in
+  // the policy decision format with uncertainty-adjusted (fractional-Kelly) sizing off a $${BANKROLL} bankroll.
+  if (armedCands.length) {
+    console.log(`\n  🟢 ${armedCands.length} DEPLOY RECOMMENDATION(S) (bankroll $${BANKROLL}):`);
+    for (const c of armedCands) {
+      const rec = carryRecommendation({ instrument: `${c.candidate}-USD`, netApr: c.netApr, grossApr: c.grossApr, executable: c.executable, persistence: c.persistence ?? undefined, depthUsd: c.depthUsd, bankrollUsd: BANKROLL });
+      console.log(formatRecommendation(rec).split("\n").map((l) => `    ${l}`).join("\n") + "\n");
+    }
+  } else console.log(`\n  no DEPLOY recommendations — nothing armed (the honest state until a regime fattens). The pro-trading path is wired: when a carry arms, this prints a structured take-the-trade verdict.`);
   console.log("");
   db.close();
 }

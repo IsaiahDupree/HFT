@@ -41,6 +41,13 @@ describe("falsifyConsensus — balanced control (skeptic random/flip + advocate 
     expect(f.rating).not.toBe("real_edge");
   });
 
+  it("SURVIVORSHIP GATE: outcome-selected data that 'passes' is capped at survivorship_suspect, never real_edge", () => {
+    const signals: ConsensusSignal[] = [], resolved = new Map<string, ResolvedMarket>();
+    for (let i = 0; i < 10; i++) { signals.push(sig(`m${i}`, "yes", 0.5)); resolved.set(...mkt(`m${i}`, i < 8 ? 0 : 1)); }
+    expect(falsifyConsensus(signals, resolved, { minDistinctSignals: 5 }, 500, 7, false).rating).toBe("real_edge");        // not flagged → real_edge
+    expect(falsifyConsensus(signals, resolved, { minDistinctSignals: 5 }, 500, 7, true).rating).toBe("survivorship_suspect"); // flagged → capped
+  });
+
   it("insufficient_data when too few scorable signals", () => {
     const signals = [sig("m0", "yes", 0.5), sig("m1", "yes", 0.5)];
     const resolved = new Map([mkt("m0", 0), mkt("m1", 0)]);

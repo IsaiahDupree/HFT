@@ -118,7 +118,9 @@ const mapped: import("../src/lib/wallets/consensus.ts").ConsensusSignal[] = sign
   effectiveWallets: s.walletCount, clusterIds: [], windowStart: "", windowEnd: "",
 }));
 const resolved = new Map(signals.map((s) => [s.conditionId, { conditionId: s.conditionId, winningIndex: s.won ? s.outcomeIndex : 1 - s.outcomeIndex, outcomePayouts: [1, 0], clobTokenIds: [] }] as const));
-const fals = falsifyConsensus(mapped, resolved as any, { sizeUsd: SIZE_USD, minDistinctSignals: 5 }, 1000);
+// survivorshipSelected=TRUE: cohort is leaderboard-PnL-selected and `won` is derived from their OWN closed
+// positions, so the controls are circular — the gate caps the verdict at survivorship_suspect, never real_edge.
+const fals = falsifyConsensus(mapped, resolved as any, { sizeUsd: SIZE_USD, minDistinctSignals: 5 }, 1000, 7, true);
 console.log(`\nfalsification (n=${fals.n}):`);
 console.log(`  real PnL ${(fals.realPnlPct * 100).toFixed(1)}% · win ${(fals.realWinRate * 100).toFixed(0)}% | flipped ${(fals.flippedPnlPct * 100).toFixed(1)}% | random mean ${(fals.randomMeanPnlPct * 100).toFixed(1)}%`);
 console.log(`  SKEPTIC random-direction p=${fals.randomP.toFixed(3)} ${fals.randomP < 0.05 ? "✓ direction informative" : "✗ coin-flip does as well"}`);

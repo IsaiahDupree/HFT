@@ -13,7 +13,7 @@ import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { calendarBasisReturns, basisCarryReturns } from "../src/lib/backtest/candle/funding.ts";
 import { fetchBinanceKlines, fetchBinancePerpKlines } from "../src/lib/data/binance.ts";
-import { sharpe } from "../src/lib/backtest/candle/stats.ts";
+import { sharpe, deflatedSharpe } from "../src/lib/backtest/candle/stats.ts";
 import { rollingStd, trailingZ, regimeGateSize, applySizing, shuffleSizes } from "../src/lib/backtest/regime-size.ts";
 import { equalWeights, inverseVolWeights, applyAllocation, normalizeWeights, correlationMatrix } from "../src/lib/backtest/edge-allocator.ts";
 import { lcgRng, permutationTest } from "../src/lib/backtest/shuffle-control.ts";
@@ -119,8 +119,14 @@ console.log(`   diversification: combined OOS Sharpe ${ann(oos(rgBook)).toFixed(
 console.log(`   vs equal-weight: risk-parity+regime ${ann(oos(rgBook)).toFixed(2)}  vs  EW ${ann(oos(ewBook)).toFixed(2)}  → ${ann(oos(rgBook)) > ann(oos(ewBook)) ? "better" : "no better"}`);
 console.log(`   vs SHUFFLED regime: 300 nulls mean ${(nullSh.reduce((a, x) => a + x, 0) / nullSh.length).toFixed(2)}  → p=${pt.pValue.toFixed(3)} ${pt.pValue < 0.05 ? "✓ regime timing helps" : "✗ shuffle does as well"}`);
 
+// REAL Deflated Sharpe (was a regime-shuffle proxy): deflate the deployed book's OOS Sharpe for the number of
+// configs we tried (the 3 sleeves + EW + RP + RP+regime). DSR = P(the Sharpe is a true positive after deflation).
+const trialSharpes = [...R.map((r) => sharpe(oos(r))), sharpe(oos(ewBook)), sharpe(oos(rpBook)), sharpe(oos(rgBook))];
+const ds = deflatedSharpe(oos(rgBook), trialSharpes);
+console.log(`   DEFLATION: real DSR ${ds.dsr.toFixed(2)} (per-period sr ${ds.sr.toFixed(2)} vs expected-max-under-null sr0 ${ds.sr0.toFixed(2)}, N=${trialSharpes.length} configs) → ${ds.dsr >= 0.95 ? "✓ deflation-clean" : "✗ fails deflation"}`);
+
 console.log("\n" + renderTradeMemo(adviseTrade({
   label: "cross-edge carry book (risk-parity+regime)", strategyReturns: rgBook, benchmarkReturns: days.map(() => 0),
-  pbo: 0, dsr: pt.pValue < 0.05 ? 1 : 0, oosFrac, betaAttractive: false,
+  pbo: 0, dsr: ds.dsr, oosFrac, betaAttractive: false,   // REAL deflated Sharpe, not the regime-shuffle proxy
 })) + "\n");
-console.log(`  READ: the win is DIVERSIFICATION (low-correlation carries stacked) + risk-parity; the regime overlay is\n  only credited if it beats the SHUFFLE. This is the deployable shape: one book, several uncorrelated carries.\n`);
+console.log(`  READ: the win is DIVERSIFICATION (low-correlation carries stacked) + risk-parity; the regime overlay is\n  only credited if it beats the SHUFFLE (here it does NOT, p=${pt.pValue.toFixed(2)} — deploy the plain risk-parity book).\n  HONESTY: DSR ${ds.dsr.toFixed(2)} deflates for the ${trialSharpes.length} configs IN THIS SCRIPT — it does NOT capture the\n  whole research program's multiple-testing burden, so the true N is larger and the real DSR is lower. The BUY is a\n  BACKTEST verdict; per the forward-confirm gate, DEPLOY still waits on the live paper-track holding (≥20 periods).\n`);

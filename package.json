@@ -153,7 +153,8 @@
     "carry:exec": "tsx scripts/carry-exec.ts",
     "carry:hl": "tsx scripts/hl-carry-recon.ts",
     "calendar:recon": "tsx scripts/calendar-recon.ts",
-    "carry:monitor": "tsx scripts/carry-monitor.ts"
+    "carry:monitor": "tsx scripts/carry-monitor.ts",
+    "bench:loops": "tsx scripts/_loop-design-bench.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

@@ -25,9 +25,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { execFileSync } from "node:child_process";
 import Anthropic from "@anthropic-ai/sdk";
 
 const CRED_PATH = path.join(os.homedir(), ".claude", ".credentials.json");
+// Modern Claude Code stores OAuth creds in the macOS Keychain (generic password), NOT the file above.
+const KEYCHAIN_SERVICE = "Claude Code-credentials";
+const KEYCHAIN_ACCOUNT = "Claude Code";
 const OAUTH_BETA = "oauth-2025-04-20";
 const OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
@@ -46,20 +50,44 @@ type CredsFile = {
   claudeAiOauth?: OAuthBundle;
 };
 
-function readCredsFile(): CredsFile | null {
-  if (!fs.existsSync(CRED_PATH)) return null;
+/** Read creds from the macOS Keychain (where modern Claude Code stores them). Same JSON shape as the file. */
+function readKeychainCreds(): CredsFile | null {
+  if (process.platform !== "darwin") return null;
   try {
-    return JSON.parse(fs.readFileSync(CRED_PATH, "utf-8")) as CredsFile;
+    const out = execFileSync("security", ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT, "-w"], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+    return JSON.parse(out.trim()) as CredsFile;
   } catch {
     return null;
   }
+}
+
+/** Persist the bundle BACK to the Keychain so the live Claude Code session sees the refreshed token. */
+function writeKeychainCreds(creds: CredsFile): boolean {
+  if (process.platform !== "darwin") return false;
+  try {
+    execFileSync("security", ["add-generic-password", "-U", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT, "-w", JSON.stringify(creds)], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Read creds: the file first, then fall back to the Keychain (modern installs are keychain-only). */
+function readCredsFile(): CredsFile | null {
+  if (fs.existsSync(CRED_PATH)) {
+    try { return JSON.parse(fs.readFileSync(CRED_PATH, "utf-8")) as CredsFile; } catch { /* fall through */ }
+  }
+  return readKeychainCreds();
 }
 
 function writeCredsBundle(bundle: Partial<OAuthBundle>): void {
   try {
     const creds = readCredsFile() ?? {};
     creds.claudeAiOauth = { ...(creds.claudeAiOauth ?? ({} as OAuthBundle)), ...bundle };
-    fs.writeFileSync(CRED_PATH, JSON.stringify(creds), "utf-8");
+    // Keychain FIRST — it's the source the live Claude Code session reads, so a refresh stays in sync.
+    const kc = writeKeychainCreds(creds);
+    // Also write the file IF it already exists (don't create a new plaintext copy), or as a fallback.
+    if (fs.existsSync(CRED_PATH) || !kc) fs.writeFileSync(CRED_PATH, JSON.stringify(creds), "utf-8");
   } catch (e) {
     // Non-fatal: refresh succeeded in memory; we just couldn't share it with
     // other processes. Next refresh in this process picks up where we left off.

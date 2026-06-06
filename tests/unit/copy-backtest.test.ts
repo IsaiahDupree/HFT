@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fillSignedDelta, reconstructPositionSeries, positionAt, cohortNetAt, copyStrategyReturns, pctReturns, leadLag, pearson, sharpe, hitRate, type Fill } from "@/lib/exec/copy-backtest";
+import { fillSignedDelta, reconstructPositionSeries, positionAt, cohortNetAt, copyStrategyReturns, pctReturns, leadLag, crossCorr, entryImpulseSeries, pearson, sharpe, hitRate, type Fill } from "@/lib/exec/copy-backtest";
 
 describe("fillSignedDelta — signed position effect of a fill", () => {
   it("Open Long +, Close Long −, Open Short −, Close Short +", () => {
@@ -65,6 +65,33 @@ describe("leadLag — predictive (leads) vs reactive (lags)", () => {
     const atZero = ll.find((x) => x.lag === 0)!.corr;
     expect(atLead).toBeGreaterThan(0.9);            // flow strongly leads price
     expect(atLead).toBeGreaterThan(atZero);
+  });
+});
+
+describe("entryImpulseSeries — NEW-ENTRY signal (immune to pre-window truncation)", () => {
+  it("bins signed OPEN-fill deltas into the right bar; ignores closes and other coins", () => {
+    const grid = [0, 100, 200, 300]; // 3 bars: [0,100) [100,200) [200,300)
+    const fs: Fill[] = [
+      { coin: "BTC", dir: "Open Long", sz: 2, px: 1, time: 50 },   // bar 0 → +2
+      { coin: "BTC", dir: "Open Short", sz: 3, px: 1, time: 150 },  // bar 1 → −3
+      { coin: "BTC", dir: "Close Long", sz: 5, px: 1, time: 250 },  // close → ignored
+      { coin: "BTC", dir: "Open Long", sz: 1, px: 1, time: 250 },   // bar 2 → +1
+      { coin: "ETH", dir: "Open Long", sz: 9, px: 1, time: 50 },    // other coin → ignored
+    ];
+    expect(entryImpulseSeries(fs, "BTC", grid)).toEqual([2, -3, 1]);
+  });
+  it("is a per-bar flow (not cumulative) — empty bars are 0", () => {
+    const grid = [0, 100, 200];
+    expect(entryImpulseSeries([{ coin: "BTC", dir: "Open Long", sz: 4, px: 1, time: 10 }], "BTC", grid)).toEqual([4, 0]);
+  });
+});
+
+describe("crossCorr — does a raw signal lead price", () => {
+  it("signal that equals next-bar return correlates ~1 at lag +1 (leads)", () => {
+    const rets = [0.01, -0.02, 0.03, -0.01, 0.02, 0.01, -0.03];
+    const signal = rets.map((_, i) => rets[i + 1] ?? 0); // signal[i] = rets[i+1]
+    const cc = crossCorr(signal, rets, 2);
+    expect(cc.find((x) => x.lag === 1)!.corr).toBeGreaterThan(0.9);
   });
 });
 

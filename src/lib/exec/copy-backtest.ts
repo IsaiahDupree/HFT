@@ -60,19 +60,43 @@ export function pearson(a: readonly number[], b: readonly number[]): number {
   return da > 0 && db > 0 ? num / Math.sqrt(da * db) : 0;
 }
 
-/**
- * Lead-lag: corr between cohort-position CHANGE (flow) and price returns at each lag k ∈ [−maxLag, maxLag].
- * k>0 ⇒ flow LEADS price (predictive — copyable); k<0 ⇒ flow LAGS (they chase — too late to copy).
- */
-export function leadLag(cohortNet: readonly number[], priceReturns: readonly number[], maxLag = 3): Array<{ lag: number; corr: number }> {
-  const flow = cohortNet.slice(1).map((p, i) => p - cohortNet[i]); // Δposition aligned to priceReturns index
+/** corr(signal[i], priceReturns[i+k]) at each lag k ∈ [−maxLag, maxLag]. k>0 ⇒ signal LEADS price. */
+export function crossCorr(signal: readonly number[], priceReturns: readonly number[], maxLag = 3): Array<{ lag: number; corr: number }> {
   const out: Array<{ lag: number; corr: number }> = [];
   for (let k = -maxLag; k <= maxLag; k++) {
     const a: number[] = [], b: number[] = [];
-    for (let i = 0; i < flow.length; i++) { const j = i + k; if (j >= 0 && j < priceReturns.length) { a.push(flow[i]); b.push(priceReturns[j]); } }
+    for (let i = 0; i < signal.length; i++) { const j = i + k; if (j >= 0 && j < priceReturns.length) { a.push(signal[i]); b.push(priceReturns[j]); } }
     out.push({ lag: k, corr: pearson(a, b) });
   }
   return out;
+}
+
+/**
+ * Lead-lag of cohort-position CHANGE (flow) vs price. k>0 ⇒ flow LEADS price (predictive — copyable);
+ * k<0 ⇒ flow LAGS (they chase — too late). NOTE: this uses the STANDING net level, whose reconstruction is
+ * corrupted by truncated fill history — prefer the entry-impulse below, which is immune to pre-window truncation.
+ */
+export function leadLag(cohortNet: readonly number[], priceReturns: readonly number[], maxLag = 3): Array<{ lag: number; corr: number }> {
+  const flow = cohortNet.slice(1).map((p, i) => p - cohortNet[i]); // Δposition aligned to priceReturns index
+  return crossCorr(flow, priceReturns, maxLag);
+}
+
+/**
+ * Per-bar signed NEW-ENTRY impulse for one coin: sum of OPEN-fill signed deltas whose time falls in
+ * [grid[i], grid[i+1]). This tests ENTRY timing (do they open BEFORE moves?) rather than stale standing holds,
+ * and — being a per-bar flow, not a cumulative level — is IMMUNE to pre-window fill truncation. Pass the whole
+ * cohort's fills to get the cohort impulse directly. Length = grid.length−1, aligned to priceReturns.
+ */
+export function entryImpulseSeries(fills: readonly Fill[], coin: string, grid: readonly number[]): number[] {
+  const imp = new Array(Math.max(grid.length - 1, 0)).fill(0);
+  if (imp.length === 0) return imp;
+  for (const f of fills) {
+    if (f.coin !== coin || !/Open/i.test(f.dir) || !Number.isFinite(f.time)) continue;
+    let lo = 0, hi = grid.length - 2, idx = -1;                       // last bar i with grid[i] ≤ time
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (grid[m] <= f.time) { idx = m; lo = m + 1; } else hi = m - 1; }
+    if (idx >= 0 && idx < imp.length) imp[idx] += fillSignedDelta(f.dir, f.sz);
+  }
+  return imp;
 }
 
 export const sharpe = (r: readonly number[]): number => {

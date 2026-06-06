@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseLeaderboard, rankWallets, positionConsensus, fillStyleProfile, realizedStats, isVerifiedProfitable, DEFAULT_RANK, type LeaderboardRow, type Fill } from "@/lib/exec/smart-money";
+import { parseLeaderboard, rankWallets, positionConsensus, fillStyleProfile, realizedStats, isVerifiedProfitable, walletArchetype, DEFAULT_RANK, type LeaderboardRow, type Fill } from "@/lib/exec/smart-money";
 
 const rawRow = (addr: string, acct: number, wins: Record<string, { pnl: number; roi: number; vlm: number }>) => ({
   ethAddress: addr, displayName: "", accountValue: String(acct),
@@ -121,5 +121,20 @@ describe("realizedStats + isVerifiedProfitable — the leaderboard rank ≠ real
   });
   it("too few closed trades is unverifiable (not enough sample)", () => {
     expect(isVerifiedProfitable(realizedStats([close(100), close(100)]))).toBe(false);
+  });
+});
+
+describe("walletArchetype — pin out the strategy from behavior", () => {
+  it("high-activity neutral = market-maker; high-activity directional = hft-scalper", () => {
+    expect(walletArchetype({ tradesPerDay: 500, longBias: 0.5, topCoinShare: 0.4 })).toBe("market-maker");
+    expect(walletArchetype({ tradesPerDay: 500, longBias: 0.95, topCoinShare: 0.4 })).toBe("hft-scalper");
+  });
+  it("mid activity = directional-swing; low = position-trader; ~none = low-activity", () => {
+    expect(walletArchetype({ tradesPerDay: 10, longBias: 0.9, topCoinShare: 0.4 })).toBe("directional-swing");
+    expect(walletArchetype({ tradesPerDay: 1, longBias: 0.9, topCoinShare: 0.4 })).toBe("position-trader");
+    expect(walletArchetype({ tradesPerDay: 0.1, longBias: 0.5, topCoinShare: 0.4 })).toBe("low-activity");
+  });
+  it("one-market concentration = specialist", () => {
+    expect(walletArchetype({ tradesPerDay: 20, longBias: 0.6, topCoinShare: 0.9 })).toBe("specialist");
   });
 });

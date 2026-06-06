@@ -96,6 +96,21 @@ export function realizedStats(fills: readonly Fill[]): RealizedStats {
 
 /** A wallet's vote counts ONLY if its own realized fills are genuinely profitable (net positive AND pf ≥ 1). */
 export function isVerifiedProfitable(s: RealizedStats): boolean { return s.nClosed >= 10 && s.realizedPnl > 0 && s.profitFactor >= 1; }
+
+export type Archetype = "market-maker" | "hft-scalper" | "directional-swing" | "position-trader" | "specialist" | "low-activity";
+/**
+ * Infer a wallet's STRATEGY archetype from its behavioral fingerprint — the label that "pins out" what it does.
+ * Activity (trades/day) splits HFT/MM from swing from position; directionality (long-bias away from neutral)
+ * splits a market-maker (neutral, high-activity) from a directional scalper; concentration flags specialists.
+ */
+export function walletArchetype(s: { tradesPerDay: number; longBias: number; topCoinShare: number }): Archetype {
+  const directional = Math.abs(s.longBias - 0.5) > 0.25;
+  if (s.tradesPerDay < 0.5) return "low-activity";
+  if (s.topCoinShare >= 0.85 && s.tradesPerDay < 50) return "specialist";   // one-market focus, not pure HFT
+  if (s.tradesPerDay >= 80) return directional ? "hft-scalper" : "market-maker";
+  if (s.tradesPerDay >= 3) return "directional-swing";
+  return "position-trader";
+}
 export type StyleProfile = { nFills: number; spanDays: number; tradesPerDay: number; topCoins: string[]; longBias: number; winRate: number; avgNotional: number; classification: "scalper/MM (un-copyable)" | "active swing" | "position trader" | "thin" };
 
 /** Profile a wallet's fills to judge COPYABILITY — a sub-minute scalper can't be followed; a swing trader can. */

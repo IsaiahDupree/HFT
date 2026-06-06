@@ -34,11 +34,17 @@ describe("suggestSize — fractional-Kelly, confidence-scaled, capped, ruin-aver
 });
 
 describe("carryRecommendation — affirmative DEPLOY/WATCH/STAND_ASIDE", () => {
-  it("DEPLOY a fat, executable, persistent carry with a real size", () => {
-    const r = carryRecommendation({ instrument: "HYPE-USD", netApr: 24, grossApr: 27, executable: true, persistence: 0.95, depthUsd: 300_000, bankrollUsd: 10_000 });
+  it("DEPLOY a fat, executable, persistent carry ONLY when forward-confirmed", () => {
+    const r = carryRecommendation({ instrument: "HYPE-USD", netApr: 24, grossApr: 27, executable: true, persistence: 0.95, depthUsd: 300_000, bankrollUsd: 10_000, forwardConfirmed: true });
     expect(r.finalAction).toBe("DEPLOY");
     expect(r.suggestedSizeUsd).toBeGreaterThan(0);
     expect(r.edgePct).toBe(24);
+  });
+  it("the SAME carry is only WATCH until forward-confirmed (policy gate)", () => {
+    const r = carryRecommendation({ instrument: "HYPE-USD", netApr: 24, grossApr: 27, executable: true, persistence: 0.95, depthUsd: 300_000, bankrollUsd: 10_000 });
+    expect(r.finalAction).toBe("WATCH");
+    expect(r.reasoning).toMatch(/AWAITING FORWARD CONFIRMATION/);
+    expect(r.suggestedSizeUsd).toBe(0);
   });
   it("WATCH a fat-but-not-executable signal (gross ≥13%, blocked)", () => {
     const r = carryRecommendation({ instrument: "STABLE-USD", netApr: 0, grossApr: 41, executable: false, persistence: 0.65, bankrollUsd: 10_000 });

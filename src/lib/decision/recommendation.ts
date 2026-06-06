@@ -65,10 +65,11 @@ export function formatRecommendation(r: TradeRecommendation): string {
 
 import { applyRiskSizing } from "./risk-sizing";
 
-export type CarryRecInput = { instrument: string; netApr: number; grossApr: number; executable: boolean; persistence?: number; depthUsd?: number | null; bankrollUsd: number; tailRisk?: string; copySignal?: string | null };
+export type CarryRecInput = { instrument: string; netApr: number; grossApr: number; executable: boolean; persistence?: number; depthUsd?: number | null; bankrollUsd: number; tailRisk?: string; copySignal?: string | null; forwardConfirmed?: boolean };
 /**
- * Build a carry/basis recommendation. DEPLOY only when executable AND net edge clears; confidence from
- * persistence; size = fractional-Kelly proxy (edge/“variance” via a capped APR→fraction map), confidence-scaled.
+ * Build a carry/basis recommendation. Per policy, DEPLOY requires the edge be FORWARD-CONFIRMED (a paper-track
+ * held) — an armed-but-unconfirmed carry is WATCH, not a green light. Confidence from persistence; size =
+ * fractional-Kelly proxy (capped APR→fraction map), confidence-scaled, liquidity-capped.
  */
 export function carryRecommendation(c: CarryRecInput): TradeRecommendation {
   const confidence = Math.max(0, Math.min(1, (c.persistence ?? 0.7))) * (c.executable ? 1 : 0.4);
@@ -77,11 +78,14 @@ export function carryRecommendation(c: CarryRecInput): TradeRecommendation {
   const baseSize = c.executable ? suggestSize(kellyish, confidence, { bankrollUsd: c.bankrollUsd }) : 0;
   // risk-budget scaling: cap the size at a fraction of the hedge's available DEPTH (can't fill/unwind otherwise)
   const size = applyRiskSizing(baseSize, { sizeUsd: baseSize, liquidityUsd: c.depthUsd ?? undefined });
-  const finalAction: FinalAction = c.executable && c.netApr > 0 && size > 0 ? "DEPLOY" : Math.abs(c.grossApr) >= 13 ? "WATCH" : "STAND_ASIDE";
+  const deployable = c.executable && c.netApr > 0 && size > 0;
+  // policy gate: only DEPLOY a forward-CONFIRMED edge; otherwise it's WATCH (armed, awaiting the paper-track).
+  const finalAction: FinalAction = deployable && c.forwardConfirmed === true ? "DEPLOY" : deployable || Math.abs(c.grossApr) >= 13 ? "WATCH" : "STAND_ASIDE";
+  const confNote = deployable && c.forwardConfirmed !== true ? " — AWAITING FORWARD CONFIRMATION (paper-track must hold before deploy)" : "";
   return {
     market: c.instrument, impliedProb: null, estimatedProb: null, edgePct: c.netApr,
-    confidence, liquidityUsd: c.depthUsd ?? null, suggestedSizeUsd: size,
-    reasoning: `delta-neutral carry, net ${c.netApr.toFixed(1)}% APR (gross ${c.grossApr.toFixed(1)}%), persistence ${((c.persistence ?? 0) * 100).toFixed(0)}%${c.executable ? ", hedge fills" : ", NOT executable"}`,
+    confidence, liquidityUsd: c.depthUsd ?? null, suggestedSizeUsd: finalAction === "DEPLOY" ? size : 0,
+    reasoning: `delta-neutral carry, net ${c.netApr.toFixed(1)}% APR (gross ${c.grossApr.toFixed(1)}%), persistence ${((c.persistence ?? 0) * 100).toFixed(0)}%${c.executable ? ", hedge fills" : ", NOT executable"}${confNote}`,
     tailRisk: c.tailRisk ?? "funding/basis flip, hedge can't be unwound at size, leg blows out in a squeeze",
     copySignal: c.copySignal ?? null, finalAction,
   };

@@ -170,7 +170,9 @@ if (show) {
   if (armedCands.length) {
     console.log(`\n  🟢 ${armedCands.length} DEPLOY RECOMMENDATION(S) (bankroll $${BANKROLL}):`);
     for (const c of armedCands) {
-      const rec = carryRecommendation({ instrument: `${c.candidate}-USD`, netApr: c.netApr, grossApr: c.grossApr, executable: c.executable, persistence: c.persistence ?? undefined, depthUsd: c.depthUsd, bankrollUsd: BANKROLL });
+      // forwardConfirmed=false until the carry paper-track (carry:paper-snapshot) holds — policy: stay paper
+      // until a forward track confirms, then deploy. So an armed carry surfaces as WATCH (awaiting confirmation).
+      const rec = carryRecommendation({ instrument: `${c.candidate}-USD`, netApr: c.netApr, grossApr: c.grossApr, executable: c.executable, persistence: c.persistence ?? undefined, depthUsd: c.depthUsd, bankrollUsd: BANKROLL, forwardConfirmed: false });
       console.log(formatRecommendation(rec).split("\n").map((l) => `    ${l}`).join("\n") + "\n");
     }
   } else console.log(`\n  no DEPLOY recommendations — nothing armed (the honest state until a regime fattens). The pro-trading path is wired: when a carry arms, this prints a structured take-the-trade verdict.`);

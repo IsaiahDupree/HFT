@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.hft.hl-copy-paper — DAILY survivorship-free forward test of the HL smart-money consensus. Grades the prior
+  day's verified consensus vs realized price and records a fresh snapshot → a genuine OOS track record in a LOCAL
+  SQLite DB on the My Passport drive. The honest complement to the (biased) copy-backtest.
+
+  Install:  cp ops/com.hft.hl-copy-paper.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.hft.hl-copy-paper.plist
+  Stop:     launchctl unload ~/Library/LaunchAgents/com.hft.hl-copy-paper.plist
+  Check:    npm run hl:copy-paper -- --show
+  TCC: run from a checkout OUTSIDE ~/Documents (HFT_REPO) and grant the shell Full Disk Access so it can write
+  the DB to /Volumes/My Passport. Edit HFT_REPO / COPY_DB_PATH below.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hft.hl-copy-paper</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/zsh</string><string>-lc</string><string>exec "$HFT_REPO/scripts/cron-hl-copy-paper.sh"</string></array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HFT_REPO</key><string>/Users/isaiahdupree/hft-live</string>
+    <key>COPY_DB_PATH</key><string>/Volumes/My Passport/hft-data/hl-copy-paper.db</string>
+  </dict>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>0</integer></dict>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/tmp/hl-copy-paper.log</string>
+  <key>StandardErrorPath</key><string>/tmp/hl-copy-paper.err</string>
+</dict>
+</plist>

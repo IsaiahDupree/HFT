@@ -156,6 +156,7 @@
     "carry:monitor": "tsx scripts/carry-monitor.ts",
     "hl:smart": "tsx scripts/hl-smart-money.ts",
     "hl:copy-backtest": "tsx scripts/hl-copy-backtest.ts",
+    "hl:copy-paper": "tsx scripts/hl-copy-paper.ts",
     "bench:loops": "tsx scripts/_loop-design-bench.ts"
   },
   "dependencies": {

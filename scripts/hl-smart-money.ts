@@ -10,6 +10,7 @@
  */
 import "./_env.ts";
 import { parseLeaderboard, rankWallets, positionConsensus, fillStyleProfile, realizedStats, isVerifiedProfitable, DEFAULT_RANK, type WalletPosition, type Fill } from "../src/lib/exec/smart-money.ts";
+import { netCapitalFlow, flowDistortion, type LedgerUpdate } from "../src/lib/exec/capital-flow.ts";
 
 const num = (n: string, d: number): number => { const i = process.argv.indexOf(n); return i >= 0 && process.argv[i + 1] ? Number(process.argv[i + 1]) : d; };
 const TOP = num("--top", 20);
@@ -26,10 +27,11 @@ const rows = parseLeaderboard(await jget(LB));
 const ranked = rankWallets(rows, rank).slice(0, TOP);
 console.log(`  scanned ${rows.length} wallets → ${ranked.length} copyable candidates\n`);
 
-// pull live positions + fills for each top wallet
+// pull live positions + fills + capital flow for each top wallet
 const positions: WalletPosition[] = [];
-type Card = { addr: string; acctLive: number; monthRoi: number; consistency: number; style: string; realizedPnl: number; pf: number; verified: boolean; topPos: string };
+type Card = { addr: string; acctLive: number; monthRoi: number; consistency: number; style: string; realizedPnl: number; pf: number; verified: boolean; distorted: boolean; withdrawnUsd: number; topPos: string };
 const cards: Card[] = [];
+const FLOW_START = Math.floor(Date.now() - 30 * 86_400_000);
 for (const w of ranked) {
   try {
     const st = await info({ type: "clearinghouseState", user: w.address });
@@ -38,23 +40,26 @@ for (const w of ranked) {
     const posList = aps.map((a) => ({ coin: a.position.coin, szi: Number(a.position.szi), notionalUsd: Number(a.position.positionValue ?? Math.abs(Number(a.position.szi)) * Number(a.position.entryPx ?? 0)) }));
     for (const p of posList) positions.push({ wallet: w.address, coin: p.coin, szi: p.szi, notionalUsd: p.notionalUsd, accountValue: acctLive });
     const fills = ((await info({ type: "userFills", user: w.address })) as Array<Record<string, unknown>>).map((f) => ({ coin: String(f.coin), dir: String(f.dir ?? ""), sz: Number(f.sz), px: Number(f.px), closedPnl: Number(f.closedPnl ?? 0), time: Number(f.time) } as Fill));
+    const ledger = (await info({ type: "userNonFundingLedgerUpdates", user: w.address, startTime: FLOW_START })) as LedgerUpdate[];
+    const flow = netCapitalFlow(ledger), dist = flowDistortion(flow, acctLive);
     const style = fillStyleProfile(fills), rs = realizedStats(fills);
     const top = posList.sort((a, b) => b.notionalUsd - a.notionalUsd)[0];
-    cards.push({ addr: w.address, acctLive, monthRoi: w.month.roi, consistency: w.consistency, style: style.classification, realizedPnl: rs.realizedPnl, pf: rs.profitFactor, verified: isVerifiedProfitable(rs), topPos: top ? `${top.szi >= 0 ? "L" : "S"} ${top.coin} $${(top.notionalUsd / 1000).toFixed(0)}k` : "flat" });
+    cards.push({ addr: w.address, acctLive, monthRoi: w.month.roi, consistency: w.consistency, style: style.classification, realizedPnl: rs.realizedPnl, pf: rs.profitFactor, verified: isVerifiedProfitable(rs), distorted: dist.distorted, withdrawnUsd: flow.withdrawals, topPos: top ? `${top.szi >= 0 ? "L" : "S"} ${top.coin} $${(top.notionalUsd / 1000).toFixed(0)}k` : "flat" });
     await new Promise((r) => setTimeout(r, 60));
   } catch { /* skip wallet */ }
 }
 
-console.log(`  ${"wallet".padEnd(13)} ${"acct".padEnd(7)} ${"moROI".padEnd(6)} ${"realizedPnL".padEnd(12)} ${"PF".padEnd(6)} ${"verified".padEnd(9)} ${"style".padEnd(24)} top`);
+console.log(`  ${"wallet".padEnd(13)} ${"acct".padEnd(7)} ${"moROI".padEnd(6)} ${"realizedPnL".padEnd(12)} ${"PF".padEnd(6)} ${"verified".padEnd(9)} ${"flow".padEnd(11)} ${"style".padEnd(22)} top`);
 for (const c of cards) {
   const pf = c.pf === Infinity ? "∞" : c.pf.toFixed(2);
-  console.log(`  ${(c.addr.slice(0, 10) + "…").padEnd(13)} ${`$${(c.acctLive / 1000).toFixed(0)}k`.padEnd(7)} ${`${(c.monthRoi * 100).toFixed(0)}%`.padEnd(6)} ${`$${(c.realizedPnl / 1000).toFixed(1)}k`.padEnd(12)} ${pf.padEnd(6)} ${(c.verified ? "✓ real" : "✗ fake").padEnd(9)} ${c.style.padEnd(24)} ${c.topPos}`);
+  const flow = c.distorted ? `⚠ -$${(c.withdrawnUsd / 1000).toFixed(0)}k` : "clean";
+  console.log(`  ${(c.addr.slice(0, 10) + "…").padEnd(13)} ${`$${(c.acctLive / 1000).toFixed(0)}k`.padEnd(7)} ${`${(c.monthRoi * 100).toFixed(0)}%`.padEnd(6)} ${`$${(c.realizedPnl / 1000).toFixed(1)}k`.padEnd(12)} ${pf.padEnd(6)} ${(c.verified ? "✓ real" : "✗ fake").padEnd(9)} ${flow.padEnd(11)} ${c.style.padEnd(22)} ${c.topPos}`);
 }
 
-// smart-money consensus — ONLY copyable (non-scalper) AND realized-profitable (verified by own fills) wallets vote.
+// consensus — copyable (non-scalper) AND verified-profitable AND NOT flow-distorted (cash-outs ≠ signal).
 const copyablePositions = positions.filter((p) => {
   const card = cards.find((c) => c.addr === p.wallet);
-  return card && !card.style.includes("scalper") && card.verified;
+  return card && !card.style.includes("scalper") && card.verified && !card.distorted;
 });
 const consensus = positionConsensus(copyablePositions).filter((c) => c.longWallets + c.shortWallets >= 2).slice(0, 12);
 console.log(`\n  ── SMART-MONEY CONSENSUS (VERIFIED-profitable + copyable wallets only, ≥2 per coin) ──`);

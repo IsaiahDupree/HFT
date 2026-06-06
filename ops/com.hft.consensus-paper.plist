@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- com.hft.consensus-paper — every 4h: record live Polymarket consensus signals on OPEN markets + grade prior
+     ones on INDEPENDENT Gamma resolution. The ONLY non-circular test of the consensus edge (the retro path is
+     survivorship-circular). Accumulates a forward track in the Polymarket DB → converts survivorship_suspect
+     into a real verdict. Check: npm run consensus:paper -- --show
+     Install: cp ops/com.hft.consensus-paper.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.hft.consensus-paper.plist
+     TCC: run from a checkout OUTSIDE ~/Documents (HFT_REPO). Edit HFT_REPO below. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hft.consensus-paper</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/zsh</string><string>-lc</string><string>exec "$HFT_REPO/scripts/cron-consensus-paper.sh"</string></array>
+  <key>EnvironmentVariables</key><dict><key>HFT_REPO</key><string>/Users/isaiahdupree/hft-live</string></dict>
+  <key>StartInterval</key><integer>14400</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/tmp/consensus-paper.log</string>
+  <key>StandardErrorPath</key><string>/tmp/consensus-paper.err</string>
+</dict>
+</plist>

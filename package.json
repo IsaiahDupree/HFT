@@ -76,6 +76,7 @@
     "copy:verify": "tsx scripts/copy-backtest-verify.ts",
     "consensus:backtest": "tsx scripts/consensus-backtest.ts",
     "consensus:retro": "tsx scripts/consensus-retro.ts",
+    "consensus:paper": "tsx scripts/consensus-paper.ts",
     "seed:tracked-wallets": "tsx scripts/seed-tracked-wallets.ts",
     "watch:aave-liq": "tsx scripts/watch-aave-liquidations.ts",
     "worker:consensus-exec": "tsx scripts/worker-consensus-executor.ts",

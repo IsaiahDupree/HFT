@@ -9,7 +9,7 @@
  *   npm run hl:smart [-- --top 20 --min-acct 25000 --min-vlm 250000 --max-turnover 300]
  */
 import "./_env.ts";
-import { parseLeaderboard, rankWallets, positionConsensus, fillStyleProfile, DEFAULT_RANK, type WalletPosition, type Fill } from "../src/lib/exec/smart-money.ts";
+import { parseLeaderboard, rankWallets, positionConsensus, fillStyleProfile, realizedStats, isVerifiedProfitable, DEFAULT_RANK, type WalletPosition, type Fill } from "../src/lib/exec/smart-money.ts";
 
 const num = (n: string, d: number): number => { const i = process.argv.indexOf(n); return i >= 0 && process.argv[i + 1] ? Number(process.argv[i + 1]) : d; };
 const TOP = num("--top", 20);
@@ -28,7 +28,7 @@ console.log(`  scanned ${rows.length} wallets → ${ranked.length} copyable cand
 
 // pull live positions + fills for each top wallet
 const positions: WalletPosition[] = [];
-type Card = { addr: string; acctLive: number; allRoi: number; monthRoi: number; consistency: number; turnover: number; style: string; nPos: number; topPos: string };
+type Card = { addr: string; acctLive: number; monthRoi: number; consistency: number; style: string; realizedPnl: number; pf: number; verified: boolean; topPos: string };
 const cards: Card[] = [];
 for (const w of ranked) {
   try {
@@ -38,26 +38,27 @@ for (const w of ranked) {
     const posList = aps.map((a) => ({ coin: a.position.coin, szi: Number(a.position.szi), notionalUsd: Number(a.position.positionValue ?? Math.abs(Number(a.position.szi)) * Number(a.position.entryPx ?? 0)) }));
     for (const p of posList) positions.push({ wallet: w.address, coin: p.coin, szi: p.szi, notionalUsd: p.notionalUsd, accountValue: acctLive });
     const fills = ((await info({ type: "userFills", user: w.address })) as Array<Record<string, unknown>>).map((f) => ({ coin: String(f.coin), dir: String(f.dir ?? ""), sz: Number(f.sz), px: Number(f.px), closedPnl: Number(f.closedPnl ?? 0), time: Number(f.time) } as Fill));
-    const style = fillStyleProfile(fills);
+    const style = fillStyleProfile(fills), rs = realizedStats(fills);
     const top = posList.sort((a, b) => b.notionalUsd - a.notionalUsd)[0];
-    cards.push({ addr: w.address, acctLive, allRoi: w.allTime.roi, monthRoi: w.month.roi, consistency: w.consistency, turnover: w.turnover, style: style.classification, nPos: posList.length, topPos: top ? `${top.szi >= 0 ? "L" : "S"} ${top.coin} $${(top.notionalUsd / 1000).toFixed(0)}k` : "flat" });
+    cards.push({ addr: w.address, acctLive, monthRoi: w.month.roi, consistency: w.consistency, style: style.classification, realizedPnl: rs.realizedPnl, pf: rs.profitFactor, verified: isVerifiedProfitable(rs), topPos: top ? `${top.szi >= 0 ? "L" : "S"} ${top.coin} $${(top.notionalUsd / 1000).toFixed(0)}k` : "flat" });
     await new Promise((r) => setTimeout(r, 60));
   } catch { /* skip wallet */ }
 }
 
-console.log(`  ${"wallet".padEnd(13)} ${"acct".padEnd(8)} ${"allROI".padEnd(8)} ${"moROI".padEnd(7)} ${"consist".padEnd(8)} ${"style".padEnd(26)} top position`);
+console.log(`  ${"wallet".padEnd(13)} ${"acct".padEnd(7)} ${"moROI".padEnd(6)} ${"realizedPnL".padEnd(12)} ${"PF".padEnd(6)} ${"verified".padEnd(9)} ${"style".padEnd(24)} top`);
 for (const c of cards) {
-  console.log(`  ${(c.addr.slice(0, 10) + "…").padEnd(13)} ${`$${(c.acctLive / 1000).toFixed(0)}k`.padEnd(8)} ${`${(c.allRoi * 100).toFixed(0)}%`.padEnd(8)} ${`${(c.monthRoi * 100).toFixed(0)}%`.padEnd(7)} ${`${(c.consistency * 100).toFixed(0)}%`.padEnd(8)} ${c.style.padEnd(26)} ${c.topPos}`);
+  const pf = c.pf === Infinity ? "∞" : c.pf.toFixed(2);
+  console.log(`  ${(c.addr.slice(0, 10) + "…").padEnd(13)} ${`$${(c.acctLive / 1000).toFixed(0)}k`.padEnd(7)} ${`${(c.monthRoi * 100).toFixed(0)}%`.padEnd(6)} ${`$${(c.realizedPnl / 1000).toFixed(1)}k`.padEnd(12)} ${pf.padEnd(6)} ${(c.verified ? "✓ real" : "✗ fake").padEnd(9)} ${c.style.padEnd(24)} ${c.topPos}`);
 }
 
-// smart-money consensus (copyable swing/position traders only — exclude scalpers from the signal)
+// smart-money consensus — ONLY copyable (non-scalper) AND realized-profitable (verified by own fills) wallets vote.
 const copyablePositions = positions.filter((p) => {
   const card = cards.find((c) => c.addr === p.wallet);
-  return card && !card.style.includes("scalper");
+  return card && !card.style.includes("scalper") && card.verified;
 });
 const consensus = positionConsensus(copyablePositions).filter((c) => c.longWallets + c.shortWallets >= 2).slice(0, 12);
-console.log(`\n  ── SMART-MONEY CONSENSUS (copyable wallets only, ≥2 wallets per coin) ──`);
-if (!consensus.length) console.log(`    no coin has ≥2 copyable wallets positioned the same way right now.`);
+console.log(`\n  ── SMART-MONEY CONSENSUS (VERIFIED-profitable + copyable wallets only, ≥2 per coin) ──`);
+if (!consensus.length) console.log(`    no coin has ≥2 verified-profitable copyable wallets positioned the same way right now.`);
 for (const c of consensus) console.log(`    ${c.coin.padEnd(8)} ${c.bias.toUpperCase().padEnd(5)} net $${(c.netNotional / 1000).toFixed(0)}k  (${c.longWallets}L / ${c.shortWallets}S, gross $${(c.grossNotional / 1000).toFixed(0)}k)`);
 console.log(`\n  ⚠ intelligence only, NOT auto-copy. Bias: the rank is survivorship-selected; size tiny, verify each wallet's`);
 console.log(`    style + drawdown before following, and remember a consistent past ≠ a guaranteed future.\n`);

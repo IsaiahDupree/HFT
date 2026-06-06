@@ -75,6 +75,27 @@ export function positionConsensus(positions: readonly WalletPosition[]): CoinCon
 }
 
 export type Fill = { coin: string; dir: string; sz: number; px: number; closedPnl: number; time: number };
+
+export type RealizedStats = { nClosed: number; realizedPnl: number; winRate: number; profitFactor: number };
+/**
+ * VERIFY a wallet against its OWN realized fills — the leaderboard's ROI rank is not the same as profitable
+ * trading. A high win rate can hide negative expectancy (88% wins, profit-factor 0.54 = pennies-in-front-of-a-
+ * steamroller). profitFactor = gross wins / gross losses; ≥1 means the closed trades actually net positive.
+ */
+export function realizedStats(fills: readonly Fill[]): RealizedStats {
+  const closes = fills.filter((f) => /Close/i.test(f.dir)).map((f) => f.closedPnl).filter(Number.isFinite);
+  const n = closes.length;
+  if (!n) return { nClosed: 0, realizedPnl: 0, winRate: 0, profitFactor: 0 };
+  const grossWin = closes.filter((x) => x > 0).reduce((a, b) => a + b, 0);
+  const grossLoss = Math.abs(closes.filter((x) => x < 0).reduce((a, b) => a + b, 0));
+  return {
+    nClosed: n, realizedPnl: closes.reduce((a, b) => a + b, 0), winRate: closes.filter((x) => x > 0).length / n,
+    profitFactor: grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? Infinity : 0,
+  };
+}
+
+/** A wallet's vote counts ONLY if its own realized fills are genuinely profitable (net positive AND pf ≥ 1). */
+export function isVerifiedProfitable(s: RealizedStats): boolean { return s.nClosed >= 10 && s.realizedPnl > 0 && s.profitFactor >= 1; }
 export type StyleProfile = { nFills: number; spanDays: number; tradesPerDay: number; topCoins: string[]; longBias: number; winRate: number; avgNotional: number; classification: "scalper/MM (un-copyable)" | "active swing" | "position trader" | "thin" };
 
 /** Profile a wallet's fills to judge COPYABILITY — a sub-minute scalper can't be followed; a swing trader can. */

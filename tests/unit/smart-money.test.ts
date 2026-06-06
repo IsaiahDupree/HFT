@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseLeaderboard, rankWallets, positionConsensus, fillStyleProfile, DEFAULT_RANK, type LeaderboardRow, type Fill } from "@/lib/exec/smart-money";
+import { parseLeaderboard, rankWallets, positionConsensus, fillStyleProfile, realizedStats, isVerifiedProfitable, DEFAULT_RANK, type LeaderboardRow, type Fill } from "@/lib/exec/smart-money";
 
 const rawRow = (addr: string, acct: number, wins: Record<string, { pnl: number; roi: number; vlm: number }>) => ({
   ethAddress: addr, displayName: "", accountValue: String(acct),
@@ -92,5 +92,34 @@ describe("fillStyleProfile — copyability", () => {
   });
   it("returns 'thin' for too few fills", () => {
     expect(fillStyleProfile([]).classification).toBe("thin");
+  });
+});
+
+describe("realizedStats + isVerifiedProfitable — the leaderboard rank ≠ real profitability", () => {
+  const close = (pnl: number, t = 1): Fill => ({ coin: "BTC", dir: "Close Long", sz: 1, px: 60000, closedPnl: pnl, time: t });
+  it("computes realized PnL, win rate, and profit factor from closed fills", () => {
+    const s = realizedStats([close(100), close(100), close(-50)]);
+    expect(s.nClosed).toBe(3);
+    expect(s.realizedPnl).toBe(150);
+    expect(s.winRate).toBeCloseTo(2 / 3, 5);
+    expect(s.profitFactor).toBeCloseTo(200 / 50, 5);
+  });
+  it("THE TRAP: high win rate but NEGATIVE expectancy fails verification (pennies before a steamroller)", () => {
+    // 8 small wins (+100) + 1 huge loss (−2000): 89% win rate, but net −1200, profit factor 0.4
+    const fills = [...Array(8).fill(0).map((_, i) => close(100, i + 1)), close(-2000, 9)];
+    const s = realizedStats(fills);
+    expect(s.winRate).toBeCloseTo(8 / 9, 5);   // looks great
+    expect(s.realizedPnl).toBe(-1200);          // but loses money
+    expect(s.profitFactor).toBeLessThan(1);
+    expect(isVerifiedProfitable(s)).toBe(false); // correctly NOT copyable — this is the 0xbe4e91ae pattern
+  });
+  it("a genuinely profitable wallet (net positive, PF ≥ 1, enough trades) verifies", () => {
+    const fills = [...Array(12).fill(0).map((_, i) => close(i % 3 === 0 ? -50 : 100, i + 1))];
+    const s = realizedStats(fills);
+    expect(s.realizedPnl).toBeGreaterThan(0);
+    expect(isVerifiedProfitable(s)).toBe(true);
+  });
+  it("too few closed trades is unverifiable (not enough sample)", () => {
+    expect(isVerifiedProfitable(realizedStats([close(100), close(100)]))).toBe(false);
   });
 });

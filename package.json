@@ -154,6 +154,7 @@
     "carry:hl": "tsx scripts/hl-carry-recon.ts",
     "calendar:recon": "tsx scripts/calendar-recon.ts",
     "carry:monitor": "tsx scripts/carry-monitor.ts",
+    "hl:smart": "tsx scripts/hl-smart-money.ts",
     "bench:loops": "tsx scripts/_loop-design-bench.ts"
   },
   "dependencies": {

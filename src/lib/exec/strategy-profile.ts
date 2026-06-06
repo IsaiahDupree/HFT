@@ -62,28 +62,47 @@ export function holdTimeStats(trips: readonly RoundTrip[]): HoldStats {
   return { nTrips: trips.length, medianHoldMs: median, p25HoldMs: quantile(h, 0.25), p75HoldMs: quantile(h, 0.75), meanHoldMs: h.length ? h.reduce((a, b) => a + b, 0) / h.length : 0, horizon };
 }
 
-export type Copyability = { score: number; verdict: "copyable" | "hard" | "un-copyable"; reasons: string[] };
+export type CopyMode = "trade-copy" | "position-copy" | "none";
+export type Copyability = { score: number; mode: CopyMode; verdict: "copyable" | "hard" | "un-copyable"; reasons: string[] };
+
+const TRADE_COPY_MAX_TPD = 20;   // above this, you can't mirror discrete fills — it's a concurrent book
+
 /**
- * Score copyability ∈ [0,1] from the mechanics that actually decide whether your mirror can capture the edge —
- * NOT from how profitable the original is. Dominant factor: median hold time (longer ⇒ you have time to follow
- * the entry AND the exit). Penalty: turnover (an HFT churns faster than you can react). Honest reasons attached.
+ * Score copyability ∈ [0,1] from the MECHANICS that decide whether a follower can capture the edge — never from
+ * how profitable the original looks. Two distinct copy modes, because they need different machinery:
+ *   • trade-copy   — LOW turnover + adequate hold ⇒ mirror each entry/exit one-for-one. The clean case.
+ *   • position-copy— long net hold but HIGH turnover ⇒ a big concurrent book; you can only track NET exposure
+ *                    daily, not fills. Honest caveat: the reported median hold is likely FIFO-inflated by
+ *                    scalping on top of a core, so treat it as approximate. Harder, but real.
+ *   • none         — sub-5min churn: latency/slippage eats it before the fill is even public.
+ * Only trade-copy earns the clean "copyable" verdict; position-copy is "hard" by design.
  */
 export function copyabilityScore(a: { medianHoldMs: number; tradesPerDay: number; nTrips: number }): Copyability {
   const reasons: string[] = [];
   const holdMin = a.medianHoldMs / MIN;
   // 0 at ≤1min hold, 1 at ≥1-day hold (log scale — each 10× of hold buys ~1/3 of the range)
   const holdComponent = Math.max(0, Math.min(1, Math.log10(Math.max(holdMin, 1)) / Math.log10(1440)));
-  const activityPenalty = Math.max(0, Math.min(0.5, a.tradesPerDay / 200));
-  const score = Math.max(0, Math.min(1, holdComponent - activityPenalty));
+  const discrete = a.tradesPerDay <= TRADE_COPY_MAX_TPD;
+  let mode: CopyMode, verdict: Copyability["verdict"], score: number;
 
-  if (holdMin < 5) reasons.push(`median hold ${holdMin.toFixed(1)}min — too fast to mirror (latency/slippage eats the edge)`);
-  else if (holdMin < 240) reasons.push(`median hold ${(holdMin / 60).toFixed(1)}h — mirrorable with care`);
-  else reasons.push(`median hold ${(holdMin / 1440).toFixed(1)}d — comfortably mirrorable (you see entry and exit)`);
-  if (a.tradesPerDay > 50) reasons.push(`${a.tradesPerDay.toFixed(0)} trades/day — churns faster than a copier can react`);
+  if (holdMin < 5) {
+    mode = "none"; verdict = "un-copyable"; score = Math.max(0, holdComponent - 0.5);
+    reasons.push(`median hold ${holdMin.toFixed(1)}min — too fast to mirror (latency/slippage eats the edge)`);
+  } else if (discrete) {
+    score = holdComponent;
+    verdict = score >= 0.5 && a.nTrips >= 10 ? "copyable" : score >= 0.25 ? "hard" : "un-copyable";
+    mode = verdict === "un-copyable" ? "none" : "trade-copy";
+    reasons.push(`${a.tradesPerDay.toFixed(1)} trades/day, median hold ${holdMin < 60 ? holdMin.toFixed(0) + "m" : holdMin < 1440 ? (holdMin / 60).toFixed(1) + "h" : (holdMin / 1440).toFixed(1) + "d"} — discrete trades you can mirror one-for-one`);
+  } else if (holdMin >= 1440) {
+    mode = "position-copy"; verdict = "hard"; score = Math.max(0, Math.min(0.6, holdComponent - 0.4));
+    reasons.push(`${a.tradesPerDay.toFixed(0)} trades/day with a large concurrent book — NOT trade-by-trade copyable; only mirrorable by tracking NET exposure (position-copy)`);
+    reasons.push(`reported median hold ${(holdMin / 1440).toFixed(1)}d is likely FIFO-inflated by scalping on top of a core position — treat as approximate`);
+  } else {
+    mode = "none"; verdict = "un-copyable"; score = Math.max(0, Math.min(0.4, holdComponent - 0.5));
+    reasons.push(`${a.tradesPerDay.toFixed(0)} trades/day, sub-day book — churns faster than a copier can react`);
+  }
   if (a.nTrips < 10) reasons.push(`only ${a.nTrips} round-trips — low confidence, need more history`);
-
-  const verdict: Copyability["verdict"] = score >= 0.5 && a.nTrips >= 10 ? "copyable" : score >= 0.25 ? "hard" : "un-copyable";
-  return { score, verdict, reasons };
+  return { score, mode, verdict, reasons };
 }
 
 export type Directionality = "momentum-long" | "momentum-short" | "two-sided";
@@ -114,7 +133,8 @@ export function profileStrategy(fills: readonly Fill[]): StrategyProfile {
   const realizedPnl = trips.reduce((a, t) => a + t.pnl, 0);
   const expectancyUsd = trips.length ? realizedPnl / trips.length : 0;
   const focus = topCoinShareOf(coinCount, fills.length) >= 0.6 ? `${topCoin}-specialist` : `${coinCount.size}-coin`;
-  const label = `${directionality} ${hold.horizon} (${focus}) — ${copyability.verdict}`;
+  const copyTag = copyability.mode === "trade-copy" ? "trade-copy" : copyability.mode === "position-copy" ? "position-copy (net-book only)" : "un-copyable";
+  const label = `${directionality} ${hold.horizon} (${focus}) — ${copyTag}`;
   return { label, horizon: hold.horizon, directionality, copyability, hold, longShare, topCoin, topCoinShare: topCoinShareOf(coinCount, fills.length), nCoins: coinCount.size, winRate, expectancyUsd, realizedPnl };
 }
 

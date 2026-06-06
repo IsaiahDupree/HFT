@@ -23,7 +23,7 @@ export function resolveWalletDbPath(): string {
 export type WalletSnapshot = {
   ts: number; iso: string; address: string;
   accountValue: number; archetype: string; label: string; horizon: string; directionality: string;
-  copyabilityScore: number; copyabilityVerdict: string;
+  copyabilityScore: number; copyabilityVerdict: string; copyMode: string;
   tradesPerDay: number; medianHoldMs: number; longShare: number; topCoin: string; topCoinShare: number; nCoins: number;
   nTrips: number; winRate: number; expectancyUsd: number; realizedPnl: number;
   verified: boolean; flowDistorted: boolean; withdrawnUsd: number; openPositions: string;
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS wallet_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts INTEGER NOT NULL, iso TEXT NOT NULL, address TEXT NOT NULL,
   account_value REAL, archetype TEXT, label TEXT, horizon TEXT, directionality TEXT,
-  copyability_score REAL, copyability_verdict TEXT,
+  copyability_score REAL, copyability_verdict TEXT, copy_mode TEXT,
   trades_per_day REAL, median_hold_ms REAL, long_share REAL, top_coin TEXT, top_coin_share REAL, n_coins INTEGER,
   n_trips INTEGER, win_rate REAL, expectancy_usd REAL, realized_pnl REAL,
   verified INTEGER, flow_distorted INTEGER, withdrawn_usd REAL, open_positions TEXT
@@ -54,7 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_wtrip_addr ON wallet_trips(address, exit_time);
 
 // snake_case columns aliased back to the camelCase WalletSnapshot shape on read
 const SNAP_COLS = `ts, iso, address, account_value AS accountValue, archetype, label, horizon, directionality,
-  copyability_score AS copyabilityScore, copyability_verdict AS copyabilityVerdict,
+  copyability_score AS copyabilityScore, copyability_verdict AS copyabilityVerdict, copy_mode AS copyMode,
   trades_per_day AS tradesPerDay, median_hold_ms AS medianHoldMs, long_share AS longShare,
   top_coin AS topCoin, top_coin_share AS topCoinShare, n_coins AS nCoins,
   n_trips AS nTrips, win_rate AS winRate, expectancy_usd AS expectancyUsd, realized_pnl AS realizedPnl,
@@ -67,12 +67,15 @@ export function openWalletDb(path = resolveWalletDbPath()) {
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.exec(SCHEMA);
+  // lightweight migration: add columns that post-date the original schema (preserves existing rows)
+  const cols = new Set((db.prepare(`PRAGMA table_info(wallet_snapshots)`).all() as Array<{ name: string }>).map((c) => c.name));
+  if (!cols.has("copy_mode")) db.exec(`ALTER TABLE wallet_snapshots ADD COLUMN copy_mode TEXT`);
 
   const insSnap = db.prepare(`INSERT INTO wallet_snapshots
-    (ts,iso,address,account_value,archetype,label,horizon,directionality,copyability_score,copyability_verdict,
+    (ts,iso,address,account_value,archetype,label,horizon,directionality,copyability_score,copyability_verdict,copy_mode,
      trades_per_day,median_hold_ms,long_share,top_coin,top_coin_share,n_coins,n_trips,win_rate,expectancy_usd,realized_pnl,
      verified,flow_distorted,withdrawn_usd,open_positions)
-    VALUES (@ts,@iso,@address,@accountValue,@archetype,@label,@horizon,@directionality,@copyabilityScore,@copyabilityVerdict,
+    VALUES (@ts,@iso,@address,@accountValue,@archetype,@label,@horizon,@directionality,@copyabilityScore,@copyabilityVerdict,@copyMode,
      @tradesPerDay,@medianHoldMs,@longShare,@topCoin,@topCoinShare,@nCoins,@nTrips,@winRate,@expectancyUsd,@realizedPnl,
      @verified,@flowDistorted,@withdrawnUsd,@openPositions)`);
   // round-trips are immutable history — ignore duplicates so re-runs are idempotent

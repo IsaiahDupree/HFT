@@ -55,15 +55,29 @@ describe("copyabilityScore — the honest gate (mechanics, not profitability)", 
   it("a 30-second scalper is un-copyable no matter how good", () => {
     const c = copyabilityScore({ medianHoldMs: 30_000, tradesPerDay: 300, nTrips: 5000 });
     expect(c.verdict).toBe("un-copyable");
+    expect(c.mode).toBe("none");
     expect(c.score).toBeLessThan(0.25);
-    expect(c.reasons.join(" ")).toMatch(/too fast|churns/);
+    expect(c.reasons.join(" ")).toMatch(/too fast/);
   });
-  it("a multi-hour swing trader is copyable", () => {
+  it("a LOW-turnover multi-hour swing trader is cleanly trade-copyable", () => {
     const c = copyabilityScore({ medianHoldMs: 8 * HOUR, tradesPerDay: 4, nTrips: 40 });
     expect(c.verdict).toBe("copyable");
+    expect(c.mode).toBe("trade-copy");
     expect(c.score).toBeGreaterThanOrEqual(0.5);
   });
-  it("a great-looking wallet with too few round-trips is 'hard', not 'copyable' (low confidence)", () => {
+  it("THE FIFO TRAP: long reported hold but HIGH turnover is NOT clean copyable — it's a net-book (position-copy/hard)", () => {
+    const c = copyabilityScore({ medianHoldMs: 2.4 * DAY, tradesPerDay: 530, nTrips: 9000 });
+    expect(c.verdict).toBe("hard");          // never the clean "copyable" verdict
+    expect(c.mode).toBe("position-copy");
+    expect(c.reasons.join(" ")).toMatch(/NET exposure/);
+    expect(c.reasons.join(" ")).toMatch(/FIFO-inflated/);
+  });
+  it("high turnover with a sub-day book is un-copyable (fast churn)", () => {
+    const c = copyabilityScore({ medianHoldMs: 2 * HOUR, tradesPerDay: 400, nTrips: 5000 });
+    expect(c.verdict).toBe("un-copyable");
+    expect(c.mode).toBe("none");
+  });
+  it("a great-looking low-turnover wallet with too few round-trips is 'hard', not 'copyable' (low confidence)", () => {
     const c = copyabilityScore({ medianHoldMs: 8 * HOUR, tradesPerDay: 2, nTrips: 4 });
     expect(c.verdict).not.toBe("copyable");
     expect(c.reasons.join(" ")).toMatch(/low confidence/);
@@ -82,9 +96,10 @@ describe("profileStrategy — the full reverse-engineered dossier line", () => {
     expect(p.horizon).toBe("swing"); // 8h median hold → swing (intraday is <4h)
     expect(p.topCoin).toBe("HYPE");
     expect(p.copyability.verdict).toBe("copyable");
+    expect(p.copyability.mode).toBe("trade-copy");
     expect(p.winRate).toBe(1);
     expect(p.expectancyUsd).toBeCloseTo(10, 6);
-    expect(p.label).toContain("copyable");
+    expect(p.label).toContain("trade-copy");
   });
   it("labels a two-sided HFT scalper as un-copyable", () => {
     const fills: Fill[] = [];

@@ -3,7 +3,7 @@ import { openWalletDb, type WalletSnapshot, type TripRow } from "@/lib/exec/wall
 
 const snap = (over: Partial<WalletSnapshot> & { ts: number; address: string }): WalletSnapshot => ({
   iso: new Date(over.ts).toISOString(), accountValue: 100_000, archetype: "directional-swing", label: "momentum-long swing — copyable",
-  horizon: "swing", directionality: "momentum-long", copyabilityScore: 0.7, copyabilityVerdict: "copyable",
+  horizon: "swing", directionality: "momentum-long", copyabilityScore: 0.7, copyabilityVerdict: "copyable", copyMode: "trade-copy",
   tradesPerDay: 4, medianHoldMs: 8 * 3_600_000, longShare: 0.9, topCoin: "HYPE", topCoinShare: 0.6, nCoins: 5,
   nTrips: 40, winRate: 0.6, expectancyUsd: 50, realizedPnl: 2000, verified: true, flowDistorted: false, withdrawnUsd: 0, openPositions: "L HYPE $23k",
   ...over,

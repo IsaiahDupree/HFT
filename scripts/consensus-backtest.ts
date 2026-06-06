@@ -27,6 +27,7 @@ import {
   parseGammaResolvedMarket, type ResolvedMarket,
 } from "../src/lib/wallets/copy-backtest.ts";
 import { falsifyConsensus } from "../src/lib/wallets/consensus-falsification.ts";
+import { walletStatsFromClosed, verifyWalletStats } from "../src/lib/wallets/wallet-verification.ts";
 
 const argv = process.argv.slice(2);
 function flag(name: string, fallback: number): number {
@@ -65,13 +66,16 @@ const runId = new Date().toISOString();
 console.log(`consensus:backtest run_id=${runId} days=${DAYS} window=${WINDOW_MIN}min min_wallets=${MIN_WALLETS} step=${STEP_MIN}min`);
 console.log(`  wallets: ${wallets.length}, per-wallet limit: ${PER_WALLET_LIMIT}`);
 
-// Step 1+2: gather all trades, build a unified trade list.
+// Step 1+2: gather all trades + VERIFY each wallet (anti-delusion: only realized-profitable wallets vote).
 const allTrades: ConsensusTrade[] = [];
+const verified = new Set<string>();
 for (const w of wallets) {
   try {
     const acts = (await poly.userActivity(w.proxy_wallet, { limit: PER_WALLET_LIMIT })) as any[];
     const trades = acts.filter((a) => String(a.type ?? "TRADE").toUpperCase() === "TRADE");
     const tier = trustTier(w);
+    const closed = (await (await fetch(`https://data-api.polymarket.com/closed-positions?user=${w.proxy_wallet}&limit=${PER_WALLET_LIMIT}`, { signal: AbortSignal.timeout(20_000) })).json()) as any[];
+    if (verifyWalletStats(walletStatsFromClosed((closed ?? []).map((r) => ({ realizedPnl: Number(r.realizedPnl ?? 0), curPrice: Number(r.curPrice) })))).verified) verified.add(w.proxy_wallet);
     for (const t of trades) {
       const tsRaw = Number(t.timestamp);
       if (!Number.isFinite(tsRaw) || tsRaw <= 0) continue;
@@ -120,7 +124,7 @@ for (let start = startMs; start + WINDOW_MIN * 60_000 <= nowMs; start += STEP_MI
   // detectConsensus expects "trades older than windowMinutes are ignored" — we
   // supply only the slice, so any positive windowMinutes works.
   const sigs = detectConsensus(slice, {
-    windowMinutes: WINDOW_MIN, minWallets: MIN_WALLETS, minCombinedTrust: MIN_TRUST,
+    windowMinutes: WINDOW_MIN, minWallets: MIN_WALLETS, minCombinedTrust: MIN_TRUST, verifiedWallets: verified,
   });
   for (const sig of sigs) {
     const hourBucket = Math.floor(Date.parse(sig.windowStart) / (3600 * 1000));

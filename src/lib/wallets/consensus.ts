@@ -54,6 +54,10 @@ export type ConsensusOptions = {
   clusters?: Map<string, string> | Record<string, string>;
   /** Optional: require at least this many DISTINCT clusters (effective wallets). */
   minEffectiveWallets?: number;
+  /** Optional VERIFIED-wallet gate: when provided, only trades from wallets in this set count toward a signal.
+   *  Compute it from realized closed-position PnL (wallet-verification.ts) so unverified / fake / blown-up
+   *  leaderboard wallets can't carry a consensus into the decision pipeline. */
+  verifiedWallets?: Set<string>;
 };
 
 export type ConsensusSignal = {
@@ -91,6 +95,7 @@ export function detectConsensus(trades: ConsensusTrade[], opts: ConsensusOptions
   for (const t of trades) {
     const tsMs = Date.parse(t.ts);
     if (!Number.isFinite(tsMs) || tsMs < cutoffMs) continue;
+    if (opts.verifiedWallets && !opts.verifiedWallets.has(t.proxyWallet)) continue; // unverified wallet → no vote
     const direction = t.direction.toUpperCase();
     if (!byMarket.has(t.marketKey)) byMarket.set(t.marketKey, new Map());
     const byDir = byMarket.get(t.marketKey)!;

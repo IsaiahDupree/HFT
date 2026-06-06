@@ -14,6 +14,7 @@ import "./_env.ts";
 import { db } from "../src/lib/db/client.ts";
 import { poly } from "../src/lib/polymarket/client.ts";
 import { detectConsensus, type ConsensusTrade } from "../src/lib/wallets/consensus.ts";
+import { walletStatsFromClosed, verifyWalletStats } from "../src/lib/wallets/wallet-verification.ts";
 import { classifyDirection } from "../src/lib/wallets/consensus-backtest.ts";
 import { parseGammaResolvedMarket } from "../src/lib/wallets/copy-backtest.ts";
 import { gradeForwardSignal, forwardTrackRecord, type RecordedSignal, type GradedSignal } from "../src/lib/wallets/consensus-paper.ts";
@@ -47,8 +48,9 @@ const wallets = handle.prepare(`SELECT proxy_wallet, strategy_label, claimed_pro
 if (!wallets.length) { console.log("No tracked wallets — run `npm run seed:tracked-wallets` first."); process.exit(0); }
 const trustTier = (r: { strategy_label: string | null; claimed_profit_usd: number | null }) => Math.min(4, 1 + (r.strategy_label?.startsWith("auto-leaderboard") ? 1 : 0) + ((r.claimed_profit_usd ?? 0) > 1e6 ? 1 : 0) + ((r.claimed_profit_usd ?? 0) > 5e6 ? 1 : 0));
 
-// 1) gather trades → detect signals (recent window of OPEN markets)
+// 1) gather trades + VERIFY each wallet's realized track record (anti-delusion: only verified wallets vote)
 const allTrades: ConsensusTrade[] = [];
+const verified = new Set<string>();
 for (const w of wallets) {
   try {
     const acts = (await poly.userActivity(w.proxy_wallet, { limit: PER_WALLET_LIMIT })) as any[];
@@ -58,8 +60,12 @@ for (const w of wallets) {
       const ms = tsRaw > 1e12 ? tsRaw : tsRaw * 1000;
       allTrades.push({ proxyWallet: w.proxy_wallet, trustTier: tier, marketKey: String(t.conditionId ?? ""), marketTitle: t.title ?? undefined, direction: String(t.outcome ?? (t.side ?? "")).trim() || "Yes", usd: Number(t.usdcSize ?? 0) || Number(t.size ?? 0) * Number(t.price ?? 0), price: Number(t.price ?? 0), ts: new Date(ms).toISOString() });
     }
+    // verify from realized CLOSED positions (real profit on resolved markets, not leaderboard ROI)
+    const closed = (await (await fetch(`https://data-api.polymarket.com/closed-positions?user=${w.proxy_wallet}&limit=${PER_WALLET_LIMIT}`, { signal: AbortSignal.timeout(20_000) })).json()) as any[];
+    if (verifyWalletStats(walletStatsFromClosed((closed ?? []).map((r) => ({ realizedPnl: Number(r.realizedPnl ?? 0), curPrice: Number(r.curPrice) })))).verified) verified.add(w.proxy_wallet);
   } catch (e) { console.warn(`  ${w.proxy_wallet}: ${(e as Error).message}`); }
 }
+console.log(`consensus:paper — ${verified.size}/${wallets.length} wallets VERIFIED-profitable (only these vote)`);
 allTrades.sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
 const nowMs = Date.now(), startMs = nowMs - DAYS * 86_400_000;
 const inRange = allTrades.filter((t) => { const ms = Date.parse(t.ts); return ms >= startMs && ms <= nowMs; });
@@ -67,7 +73,7 @@ const seen = new Set<string>(); const signals = [] as ReturnType<typeof detectCo
 for (let s = startMs; s + WINDOW_MIN * 60_000 <= nowMs; s += STEP_MIN * 60_000) {
   const slice = inRange.filter((t) => { const ms = Date.parse(t.ts); return ms >= s && ms <= s + WINDOW_MIN * 60_000; });
   if (slice.length < MIN_WALLETS) continue;
-  for (const sig of detectConsensus(slice, { windowMinutes: WINDOW_MIN, minWallets: MIN_WALLETS, minCombinedTrust: MIN_TRUST })) {
+  for (const sig of detectConsensus(slice, { windowMinutes: WINDOW_MIN, minWallets: MIN_WALLETS, minCombinedTrust: MIN_TRUST, verifiedWallets: verified })) {
     const key = `${sig.marketKey}|${sig.direction.toLowerCase()}`; if (seen.has(key)) continue; seen.add(key); signals.push(sig);
   }
 }

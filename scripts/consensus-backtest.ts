@@ -26,6 +26,7 @@ import {
 import {
   parseGammaResolvedMarket, type ResolvedMarket,
 } from "../src/lib/wallets/copy-backtest.ts";
+import { falsifyConsensus } from "../src/lib/wallets/consensus-falsification.ts";
 
 const argv = process.argv.slice(2);
 function flag(name: string, fallback: number): number {
@@ -163,6 +164,14 @@ const result = backtestConsensusSignals(signals, resolvedByCondition, {
 });
 console.log(`\nresult: ${result.signals_used}/${result.signals_seen} scorable, best slip=${result.best_slippage_bps}bps → $${result.best_pnl_usd.toFixed(2)}`);
 console.log(`verdict: ${result.verdict.rating} — ${result.verdict.reason}`);
+
+// FALSIFICATION (the missing control): is the consensus DIRECTION informative, and does it beat the PRICE?
+const fals = falsifyConsensus(signals, resolvedByCondition, { sizeUsd: SIZE_USD, minDistinctSignals: 5 }, 1000);
+console.log(`\nfalsification (n=${fals.n}):`);
+console.log(`  real PnL ${(fals.realPnlPct * 100).toFixed(1)}% · win ${(fals.realWinRate * 100).toFixed(0)}% | flipped ${(fals.flippedPnlPct * 100).toFixed(1)}% | random mean ${(fals.randomMeanPnlPct * 100).toFixed(1)}%`);
+console.log(`  SKEPTIC random-direction p = ${fals.randomP.toFixed(3)} ${fals.randomP < 0.05 ? "✓ direction informative" : "✗ a coin-flip does as well"}`);
+console.log(`  ADVOCATE vs implied price: win ${(fals.realWinRate * 100).toFixed(0)}% vs implied ${(fals.impliedWinRate * 100).toFixed(0)}% → edge ${fals.edgeVsImplied >= 0 ? "+" : ""}${(fals.edgeVsImplied * 100).toFixed(1)}pts ${fals.edgeVsImplied > 0.03 ? "✓ beats the price" : "✗ no edge vs price"}`);
+console.log(`  FALSIFICATION VERDICT: ${fals.rating} — ${fals.reason}`);
 
 // Persist.
 const insert = handle.prepare(

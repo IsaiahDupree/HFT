@@ -78,7 +78,7 @@ const BEARISH_RE = /^(no|down|under|short|sell|bearish|false|0)$/i;
  * markets list ["Yes","No"] or ["Up","Down"] consistently; this heuristic
  * works for the vast majority of consensus producers' direction labels.
  */
-function classifyDirection(direction: string): 0 | 1 | null {
+export function classifyDirection(direction: string): 0 | 1 | null {
   if (BULLISH_RE.test(direction.trim())) return 0;
   if (BEARISH_RE.test(direction.trim())) return 1;
   return null;

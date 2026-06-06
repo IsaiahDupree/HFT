@@ -18,6 +18,7 @@ import {
   detectRetroactiveConsensus, scoreRetroactiveSignals,
   type ClosedPositionInput,
 } from "../src/lib/wallets/retroactive-consensus.ts";
+import { falsifyConsensus } from "../src/lib/wallets/consensus-falsification.ts";
 
 const argv = process.argv.slice(2);
 function flag(name: string, fallback: number): number {
@@ -105,6 +106,25 @@ console.log(`buckets:`);
 for (const b of result.buckets) {
   console.log(`  slip=${b.slippage_bps}bps n=${b.n_signals} wins=${b.n_wins} win%=${(b.win_rate * 100).toFixed(0)} pnl=$${b.pnl_usd.toFixed(2)} pnl%=${(b.pnl_pct * 100).toFixed(1)}`);
 }
+
+// FALSIFICATION (balanced): map retro signals → consensus shape, then run the direction-flip/random SKEPTIC
+// control + the implied-price ADVOCATE control. NOTE: retro signals are the cohort's OWN CLOSED positions, so
+// the cohort is survivorship-selected on the outcome — the controls show direction-informativeness, NOT a
+// forward edge. A clean forward verdict needs consensus:backtest (markets resolving AFTER the signal).
+const mapped: import("../src/lib/wallets/consensus.ts").ConsensusSignal[] = signals.map((s) => ({
+  marketKey: s.conditionId, direction: s.outcomeIndex === 0 ? "yes" : "no",
+  avgPrice: s.outcomeIndex === 0 ? s.consensusAvgPrice : 1 - s.consensusAvgPrice,
+  wallets: [], combinedTrust: s.combinedTrust, combinedUsd: s.combinedUsd, walletCount: s.walletCount,
+  effectiveWallets: s.walletCount, clusterIds: [], windowStart: "", windowEnd: "",
+}));
+const resolved = new Map(signals.map((s) => [s.conditionId, { conditionId: s.conditionId, winningIndex: s.won ? s.outcomeIndex : 1 - s.outcomeIndex, outcomePayouts: [1, 0], clobTokenIds: [] }] as const));
+const fals = falsifyConsensus(mapped, resolved as any, { sizeUsd: SIZE_USD, minDistinctSignals: 5 }, 1000);
+console.log(`\nfalsification (n=${fals.n}):`);
+console.log(`  real PnL ${(fals.realPnlPct * 100).toFixed(1)}% · win ${(fals.realWinRate * 100).toFixed(0)}% | flipped ${(fals.flippedPnlPct * 100).toFixed(1)}% | random mean ${(fals.randomMeanPnlPct * 100).toFixed(1)}%`);
+console.log(`  SKEPTIC random-direction p=${fals.randomP.toFixed(3)} ${fals.randomP < 0.05 ? "✓ direction informative" : "✗ coin-flip does as well"}`);
+console.log(`  ADVOCATE vs price: win ${(fals.realWinRate * 100).toFixed(0)}% vs implied ${(fals.impliedWinRate * 100).toFixed(0)}% → edge ${fals.edgeVsImplied >= 0 ? "+" : ""}${(fals.edgeVsImplied * 100).toFixed(1)}pts ${fals.edgeVsImplied > 0.03 ? "✓ beats the price" : "✗ no edge vs price"}`);
+console.log(`  VERDICT: ${fals.rating} — ${fals.reason}`);
+console.log(`  ⚠ SURVIVORSHIP: retro signals are winners' OWN closed positions → controls show direction-informativeness, NOT a forward edge. Confirm with consensus:backtest (forward-resolving markets).`);
 
 // Persist signals + buckets.
 const insertSig = handle.prepare(

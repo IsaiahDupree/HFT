@@ -82,3 +82,7 @@ research/**/.venv/
 # heavy video-intelligence raw media (keep the extracted OCR/prompts under docs/blueprint/<id>/)
 docs/blueprint/raw/
 sources/
+
+# hl-wallet-track: per-wallet dossiers regenerate every run (source of truth is wallets.db on
+# My Passport). Keep the index README in-repo for browsing; ignore the churning per-wallet files.
+docs/wallets/0x*.md

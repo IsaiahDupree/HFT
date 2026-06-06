@@ -159,6 +159,7 @@
     "hl:copy-backtest": "tsx scripts/hl-copy-backtest.ts",
     "hl:copy-paper": "tsx scripts/hl-copy-paper.ts",
     "hl:wallet-map": "tsx scripts/hl-wallet-map.ts",
+    "hl:wallet-track": "tsx scripts/hl-wallet-track.ts",
     "bench:loops": "tsx scripts/_loop-design-bench.ts",
     "bench:fingerprint": "tsx scripts/_hl-fingerprint-loop-bench.ts"
   },

@@ -163,6 +163,7 @@
     "hl:discover": "tsx scripts/hl-discover.ts",
     "hl:netbook-paper": "tsx scripts/hl-netbook-paper.ts",
     "hl:move-watch": "tsx scripts/hl-move-watch.ts",
+    "hl:copy-sim": "tsx scripts/hl-copy-sim.ts",
     "bench:loops": "tsx scripts/_loop-design-bench.ts",
     "bench:fingerprint": "tsx scripts/_hl-fingerprint-loop-bench.ts"
   },

@@ -18,7 +18,7 @@ import { resolve } from "node:path";
 import { openWalletDb } from "../src/lib/exec/wallet-store.ts";
 import { reconstructPositionSeries, positionAt, type Fill as BtFill } from "../src/lib/exec/copy-backtest.ts";
 import { netBookWeights, priceReturns, type NetPosition } from "../src/lib/exec/netbook-copy.ts";
-import { simulateCopy, equityFromReturns, sparkline, type SimPeriod } from "../src/lib/exec/copy-sim.ts";
+import { simulateCopy, equityFromReturns, equalWeightLongReturn, sparkline, type SimPeriod } from "../src/lib/exec/copy-sim.ts";
 
 const has = (f: string) => process.argv.includes(f);
 const num = (n: string, d: number): number => { const i = process.argv.indexOf(n); return i >= 0 && process.argv[i + 1] != null ? Number(process.argv[i + 1]) : d; };
@@ -133,6 +133,15 @@ if (FORWARD) {
 
     const r = simulateCopy(periods, { startUsd: START, copyFraction: FRACTION, costBps: COST_BPS, maxDrawdownStop: DD_STOP });
     report(`BACKTEST — ${candidates.length} wallets, ${periods.length} daily periods`, "⚠️ SURVIVORSHIP-BIASED & in-sample: these wallets were chosen BECAUSE they won. Descriptive, NOT predictive.", r);
+
+    // BETA GATE: does copying beat just holding the same coins equal-weight long? Same exposure (copyFraction), no shorts.
+    const benchNets = periods.map((p) => equalWeightLongReturn(p.rets) * FRACTION);
+    const b = equityFromReturns(benchNets, START);
+    const alpha = r.totalReturn - (b.finalUsd / START - 1);
+    console.log(`\n  BETA BASELINE — passively hold the same coins, equal-weight long (the fair benchmark)`);
+    console.log(`    ${sparkline(b.equityCurve)}`);
+    console.log(`    start ${usd(START)} → final ${usd(b.finalUsd)}   (${b.finalUsd >= START ? "+" : ""}${pct(b.finalUsd / START - 1)})`);
+    console.log(`    ⇒ ALPHA of copying vs passive-long = ${alpha >= 0 ? "+" : ""}${pct(alpha)}  ${alpha > 0 ? "✅ copy adds value over beta" : "❌ NO edge over just holding the coins — it's beta, not skill"}`);
     console.log(`\n  → the honest test is forward: run \`npm run hl:netbook-paper\` daily, then \`npm run hl:copy-sim -- --forward\`.\n`);
   }
 }

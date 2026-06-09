@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { equityFromReturns, simulateCopy, sparkline, type SimPeriod } from "@/lib/exec/copy-sim";
+import { equityFromReturns, simulateCopy, equalWeightLongReturn, sparkline, type SimPeriod } from "@/lib/exec/copy-sim";
 
 describe("equityFromReturns — compound a real bankroll", () => {
   it("a steady +1%/period grows $10k by 1.01^n", () => {
@@ -47,6 +47,21 @@ describe("simulateCopy — net-book bankroll sim with cost + fraction", () => {
     const r = simulateCopy([], { startUsd: 5000, copyFraction: 1, costBps: 10 });
     expect(r.finalUsd).toBe(5000);
     expect(r.nPeriods).toBe(0);
+  });
+});
+
+describe("equalWeightLongReturn — the beta baseline", () => {
+  it("averages the per-coin returns, all long", () => {
+    expect(equalWeightLongReturn({ BTC: 0.1, ETH: -0.02, SOL: 0.04 })).toBeCloseTo((0.1 - 0.02 + 0.04) / 3, 9);
+  });
+  it("no coins → 0", () => {
+    expect(equalWeightLongReturn({})).toBe(0);
+  });
+  it("a long-only wallet that just rode the market does NOT beat the baseline", () => {
+    // wallet weight 100% BTC; baseline = equal-long of the same single coin → identical → alpha 0
+    const rets = { BTC: 0.05 };
+    const walletRet = 1 * rets.BTC;             // simulateCopy mtm with weight 1
+    expect(walletRet - equalWeightLongReturn(rets)).toBeCloseTo(0, 9);
   });
 });
 

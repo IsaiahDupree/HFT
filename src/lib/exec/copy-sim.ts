@@ -67,6 +67,16 @@ export function simulateCopy(periods: readonly SimPeriod[], opts: SimOpts): SimR
   };
 }
 
+/**
+ * Equal-weight, all-LONG return of the coins present this period — the "fair baseline" for a long-biased copy
+ * target. If mirroring the wallet doesn't beat just holding the same coins equally, its edge is BETA (it rode
+ * the market up), not skill. This is the advocate/skeptic baseline gate the trading policy requires.
+ */
+export function equalWeightLongReturn(rets: Record<string, number>): number {
+  const v = Object.values(rets);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0;
+}
+
 /** A tiny unicode sparkline of an equity curve for the terminal. */
 export function sparkline(curve: readonly number[], width = 40): string {
   if (curve.length < 2) return "";

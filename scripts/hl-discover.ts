@@ -15,15 +15,15 @@ import { parseLeaderboard, type WalletPosition } from "../src/lib/exec/smart-mon
 import { consensusCoins, seedFromConsensus, DEFAULT_DISCOVER } from "../src/lib/exec/consensus-discovery.ts";
 
 const num = (n: string, d: number): number => { const i = process.argv.indexOf(n); return i >= 0 && process.argv[i + 1] ? Number(process.argv[i + 1]) : d; };
-const SCAN = num("--scan", 300), MIN_WALLETS = num("--min-wallets", DEFAULT_DISCOVER.minWallets);
+const SCAN = num("--scan", 300), MIN_WALLETS = num("--min-wallets", DEFAULT_DISCOVER.minWallets), SKIP = num("--skip", 0);
 const INFO = "https://api.hyperliquid.xyz/info", LB = "https://stats-data.hyperliquid.xyz/Mainnet/leaderboard";
 const OUT = process.env.WALLET_SEEDS_OUT ?? resolve(process.cwd(), "data", "wallet-seeds.json");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function jget(u: string): Promise<any> { const r = await fetch(u, { signal: AbortSignal.timeout(30_000) }); if (!r.ok) throw new Error(`${r.status}`); return r.json(); }
 async function info(b: unknown, tries = 4): Promise<any> { for (let i = 0; i < tries; i++) { const r = await fetch(INFO, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b), signal: AbortSignal.timeout(20_000) }); if (r.ok) return r.json(); if (r.status === 429 && i < tries - 1) { await sleep(1000 * (i + 1)); continue; } throw new Error(`info ${r.status}`); } }
 
-console.log(`\nhl-discover — scanning ${SCAN} largest-account wallets for conviction clusters (min ${MIN_WALLETS} co-holders)\n`);
-const rows = parseLeaderboard(await jget(LB)).sort((a, b) => b.accountValue - a.accountValue).slice(0, SCAN);
+console.log(`\nhl-discover — scanning accounts ranked ${SKIP + 1}–${SKIP + SCAN} by size${SKIP ? " (mid-size band — skipping the top whales/funds)" : ""} for conviction clusters (min ${MIN_WALLETS} co-holders)\n`);
+const rows = parseLeaderboard(await jget(LB)).sort((a, b) => b.accountValue - a.accountValue).slice(SKIP, SKIP + SCAN);
 
 const positions: WalletPosition[] = [];
 let scanned = 0;

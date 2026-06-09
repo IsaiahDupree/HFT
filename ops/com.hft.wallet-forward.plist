@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.hft.wallet-forward — daily forward accrual for the wallet-copy program (00:45 UTC). Grades the
+  mirrored net book (hl:netbook-paper), refreshes dossiers + longitudinal snapshot (hl:wallet-track),
+  and logs the live move tape (hl:move-watch). Builds the out-of-sample record that
+  `npm run hl:copy-sim -- --forward` replays — the only predictive curve.
+
+  Install:  cp ops/com.hft.wallet-forward.plist ~/Library/LaunchAgents/ && \
+            launchctl load ~/Library/LaunchAgents/com.hft.wallet-forward.plist
+  Stop:     launchctl unload ~/Library/LaunchAgents/com.hft.wallet-forward.plist
+  Check:    npm run hl:netbook-paper -- --show && npm run hl:copy-sim -- --forward
+
+  TCC: launchd is blocked from ~/Documents AND needs Full Disk Access for /Volumes/My Passport. Either
+  set HFT_REPO to a checkout outside ~/Documents, or grant /bin/zsh Full Disk Access. Edit HFT_REPO below.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hft.wallet-forward</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string><string>-lc</string>
+    <string>exec "$HFT_REPO/scripts/cron-wallet-forward.sh"</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>HFT_REPO</key><string>/Users/isaiahdupree/Documents/Software/HFT-work</string></dict>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>45</integer></dict>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>/tmp/wallet-forward.log</string>
+  <key>StandardErrorPath</key><string>/tmp/wallet-forward.err</string>
+</dict>
+</plist>

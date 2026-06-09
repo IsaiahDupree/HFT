@@ -39,14 +39,14 @@ const getState = db.prepare("SELECT ts, positions FROM move_state WHERE wallet =
 const setState = db.prepare("INSERT INTO move_state (wallet,ts,positions) VALUES (?,?,?) ON CONFLICT(wallet) DO UPDATE SET ts=excluded.ts, positions=excluded.positions");
 const logMove = db.prepare("INSERT INTO move_log (ts,iso,wallet,coin,type,side,delta_usd,copy_mode,actionable,urgency,reason) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
 
-type Tracked = { address: string; copyMode: CopyMode; medianHoldMs: number };
+type Tracked = { address: string; copyMode: CopyMode; medianHoldMs: number; verified: boolean };
 const ws = openWalletDb();
 const override = str("--wallets");
 const tracked: Tracked[] = override
-  ? override.split(",").map((s) => ({ address: s.trim().toLowerCase(), copyMode: "trade-copy" as CopyMode, medianHoldMs: 8 * 3_600_000 }))
+  ? override.split(",").map((s) => ({ address: s.trim().toLowerCase(), copyMode: "trade-copy" as CopyMode, medianHoldMs: 8 * 3_600_000, verified: true }))
   : ws.latest()
       .filter((s) => INCLUDE_HFT || s.copyMode !== "none")
-      .map((s) => ({ address: s.address, copyMode: (s.copyMode || "none") as CopyMode, medianHoldMs: s.medianHoldMs || 8 * 3_600_000 }));
+      .map((s) => ({ address: s.address, copyMode: (s.copyMode || "none") as CopyMode, medianHoldMs: s.medianHoldMs || 8 * 3_600_000, verified: !!s.verified }));
 ws.close();
 
 const usd = (n: number) => `${n >= 0 ? "+" : "−"}$${(Math.abs(n) / 1000).toFixed(0)}k`;
@@ -54,7 +54,7 @@ const ICON = { now: "🟢 MIRROR NOW", soon: "🟡 net-book soon", none: "🔴 s
 
 async function poll(): Promise<void> {
   const now = Date.now(), iso = new Date(now).toISOString();
-  let moves = 0, actionable = 0, trapped = 0, firstSeen = 0;
+  let moves = 0, actionable = 0, trapped = 0, unproven = 0, firstSeen = 0;
   for (const t of tracked) {
     try {
       const st = await info({ type: "clearinghouseState", user: t.address });
@@ -67,14 +67,20 @@ async function poll(): Promise<void> {
       const lag = now - prior.ts;
       for (const mv of detectMoves(JSON.parse(prior.positions), cur, MIN_DELTA)) {
         const sig = copySignal(mv, t.copyMode, t.medianHoldMs, lag);
-        moves++; if (sig.actionable) actionable++; if (sig.latencyTrap) trapped++;
-        logMove.run(now, iso, t.address, mv.coin, mv.type, mv.side, mv.deltaUsd, t.copyMode, sig.actionable ? 1 : 0, sig.urgency, sig.reason);
-        console.log(`  ${ICON[sig.urgency]}  ${t.address.slice(0, 10)}…  ${mv.type.toUpperCase()} ${mv.coin} ${mv.side} ${usd(mv.deltaUsd)}  [${t.copyMode}]  — ${sig.reason}`);
+        moves++;
+        // TWO gates: copyMode (can you mechanically mirror it?) AND verified (does the wallet actually make money?).
+        // A copyable-but-unproven wallet is WATCH-only — never "act" — so we don't mistake mirrorability for edge.
+        const act = sig.actionable && t.verified;
+        const icon = sig.actionable && !t.verified ? "⚪ WATCH (unproven)" : ICON[sig.urgency];
+        const note = sig.actionable && !t.verified ? `${sig.reason} · BUT wallet not verified-profitable — paper only, no capital` : sig.reason;
+        if (act) actionable++; else if (sig.actionable && !t.verified) unproven++; if (sig.latencyTrap) trapped++;
+        logMove.run(now, iso, t.address, mv.coin, mv.type, mv.side, mv.deltaUsd, t.copyMode, act ? 1 : 0, sig.urgency, note);
+        console.log(`  ${icon}  ${t.address.slice(0, 10)}…  ${mv.type.toUpperCase()} ${mv.coin} ${mv.side} ${usd(mv.deltaUsd)}  [${t.copyMode}${t.verified ? " ✓" : ""}]  — ${note}`);
       }
       await sleep(35);
     } catch { /* skip */ }
   }
-  const line = `[${iso.slice(11, 19)}] ${tracked.length} wallets · ${moves} moves · ${actionable} actionable · ${trapped} HFT-suppressed${firstSeen ? ` · ${firstSeen} baselined` : ""}`;
+  const line = `[${iso.slice(11, 19)}] ${tracked.length} wallets · ${moves} moves · ${actionable} actionable(verified) · ${unproven} watch(unproven) · ${trapped} HFT-suppressed${firstSeen ? ` · ${firstSeen} baselined` : ""}`;
   console.log(moves ? `  ${"-".repeat(4)}\n  ${line}\n` : `  ${line}`);
 }
 

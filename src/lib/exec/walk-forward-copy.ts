@@ -41,7 +41,7 @@ export type RegimeAgg = { n: number; meanAlpha: number; winRate: number };
 export type WalkForwardResult = {
   windows: WindowResult[];
   byRegime: Record<RegimeLabel, RegimeAgg>;
-  nWindows: number; meanAlpha: number; alphaConsistency: number; // fraction of windows with positive alpha
+  nWindows: number; effectiveN: number; meanAlpha: number; tStat: number; alphaConsistency: number; // fraction of windows with positive alpha
   alphaUp: number; alphaDown: number; dsr: number;
   verdict: "regime-independent edge" | "regime-dependent (directional bet)" | "no edge" | "insufficient";
 };
@@ -55,9 +55,9 @@ const agg = (xs: number[]): RegimeAgg => ({ n: xs.length, meanAlpha: xs.length ?
  */
 export function walkForwardAnalysis(
   copyReturns: readonly number[], benchReturns: readonly number[],
-  opts: { windowSize?: number; step?: number; flatBand?: number; minWindows?: number } = {},
+  opts: { windowSize?: number; step?: number; flatBand?: number; minWindows?: number; minEffWindows?: number; minTStat?: number } = {},
 ): WalkForwardResult {
-  const { windowSize = 14, step = 7, flatBand = 0.02, minWindows = 4 } = opts;
+  const { windowSize = 14, step = 7, flatBand = 0.02, minWindows = 4, minEffWindows = 6, minTStat = 1.5 } = opts;
   const idx = copyReturns.map((_, i) => i);
   const wins = rollingWindows(idx, windowSize, step);
   const windows: WindowResult[] = wins.map((w, i) => {
@@ -74,15 +74,19 @@ export function walkForwardAnalysis(
     flat: agg(windows.filter((w) => w.regime === "flat").map((w) => w.alpha)),
   };
   const meanAlpha = alphas.length ? alphas.reduce((a, b) => a + b, 0) / alphas.length : 0;
-  // DSR on the window alphas, deflated by the spread of per-window copy Sharpes (multiple-testing aware)
+  // Overlapping windows are NOT independent: effective N ≈ nWindows · step/windowSize (50% overlap ⇒ half).
+  const effectiveN = windows.length * Math.min(1, step / windowSize);
+  // t-stat on mean alpha using the OVERLAP-deflated effective N (so we can't claim precision we don't have).
+  const sdA = alphas.length > 1 ? Math.sqrt(alphas.reduce((a, b) => a + (b - meanAlpha) ** 2, 0) / (alphas.length - 1)) : 0;
+  const tStat = effectiveN <= 1 ? 0 : sdA > 0 ? meanAlpha / (sdA / Math.sqrt(effectiveN)) : meanAlpha > 0 ? Infinity : meanAlpha < 0 ? -Infinity : 0;
   const dsr = windows.length >= 4 ? deflatedSharpe(alphas, windows.map((w) => w.copySharpe)).dsr : 0;
 
   let verdict: WalkForwardResult["verdict"];
-  if (windows.length < minWindows) verdict = "insufficient";
-  // directional-bet diagnosis takes precedence over a raw mean: wins in down, loses in up = a short bet, full stop
+  if (windows.length < minWindows || effectiveN < minEffWindows) verdict = "insufficient"; // underpowered ⇒ NO verdict, either way
+  // directional-bet diagnosis takes precedence over a raw mean: wins in down, loses in up = a short bet
   else if (byRegime.up.n > 0 && byRegime.down.n > 0 && byRegime.up.meanAlpha < 0 && byRegime.down.meanAlpha > 0) verdict = "regime-dependent (directional bet)";
-  else if (meanAlpha <= 0) verdict = "no edge";
+  else if (meanAlpha <= 0 || tStat < minTStat) verdict = "no edge"; // not SIGNIFICANTLY positive
   else verdict = "regime-independent edge";
 
-  return { windows, byRegime, nWindows: windows.length, meanAlpha, alphaConsistency: alphas.length ? alphas.filter((a) => a > 0).length / alphas.length : 0, alphaUp: byRegime.up.meanAlpha, alphaDown: byRegime.down.meanAlpha, dsr, verdict };
+  return { windows, byRegime, nWindows: windows.length, effectiveN, meanAlpha, tStat, alphaConsistency: alphas.length ? alphas.filter((a) => a > 0).length / alphas.length : 0, alphaUp: byRegime.up.meanAlpha, alphaDown: byRegime.down.meanAlpha, dsr, verdict };
 }

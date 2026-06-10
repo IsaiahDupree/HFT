@@ -68,13 +68,29 @@ export function simulateCopy(periods: readonly SimPeriod[], opts: SimOpts): SimR
 }
 
 /**
- * Equal-weight, all-LONG return of the coins present this period — the "fair baseline" for a long-biased copy
- * target. If mirroring the wallet doesn't beat just holding the same coins equally, its edge is BETA (it rode
- * the market up), not skill. This is the advocate/skeptic baseline gate the trading policy requires.
+ * Equal-weight, all-LONG return of the coins present this period. WARNING: this is SIGN-STRIPPED — it treats
+ * every coin as long regardless of the wallet's actual side. For a net-SHORT book that makes alpha = copy −
+ * bench ≈ −2·bench by arithmetic (big phantom +alpha in down moves, −alpha in up), which manufactures a
+ * "directional bet" signature that isn't skill. Use it ONLY as a long-only beta reference; for a book that
+ * shorts, use signMatchedReturn. (Kept for the long-only single-wallet case + back-compat.)
  */
 export function equalWeightLongReturn(rets: Record<string, number>): number {
   const v = Object.values(rets);
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0;
+}
+
+/**
+ * SIGN-MATCHED equal-weight baseline: each coin's exposure carries the SIGN of the wallet's position (not
+ * forced long), equal size 1/n. This is the FAIR benchmark for a book that shorts — it already grants the
+ * directional call, so the resulting alpha isolates SIZING + SELECTION + TIMING skill, not "they were short in
+ * a down month." It removes the sign-stripped confound that made the walk-forward look like a directional bet.
+ */
+export function signMatchedReturn(weights: Record<string, number>, rets: Record<string, number>): number {
+  const coins = Object.keys(weights).filter((c) => weights[c] !== 0);
+  if (!coins.length) return 0;
+  let s = 0;
+  for (const c of coins) s += Math.sign(weights[c]) * (rets[c] ?? 0);
+  return s / coins.length;
 }
 
 /** A tiny unicode sparkline of an equity curve for the terminal. */

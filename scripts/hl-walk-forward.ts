@@ -14,7 +14,7 @@ import "./_env.ts";
 import { openWalletDb } from "../src/lib/exec/wallet-store.ts";
 import { reconstructPositionSeries, positionAt, type Fill as BtFill } from "../src/lib/exec/copy-backtest.ts";
 import { netBookWeights, priceReturns, bookMtmReturn, rebalanceCost, type NetPosition } from "../src/lib/exec/netbook-copy.ts";
-import { equalWeightLongReturn } from "../src/lib/exec/copy-sim.ts";
+import { signMatchedReturn } from "../src/lib/exec/copy-sim.ts";
 import { walkForwardAnalysis, type RegimeLabel } from "../src/lib/exec/walk-forward-copy.ts";
 
 const num = (n: string, d: number): number => { const i = process.argv.indexOf(n); return i >= 0 && process.argv[i + 1] != null ? Number(process.argv[i + 1]) : d; };
@@ -33,17 +33,18 @@ const candidates: string[] = override
 
 if (!candidates.length) { console.log("\nhl-walk-forward — no verified position-copy candidates. Run `npm run hl:wallet-track` first.\n"); }
 else {
-  console.log(`\nhl-walk-forward — ${candidates.length} verified position-copy wallets · ${DAYS}d · ${WINDOW}d windows step ${STEP}d\n`);
+  console.log(`\nhl-walk-forward — ${candidates.length} verified position-copy wallets · ${DAYS}d · ${WINDOW}d windows step ${STEP}d\n  benchmark: SIGN-MATCHED equal-weight (fixed the sign-stripped artifact) · standing positions seeded from a 180d fill warmup\n`);
   const startTime = Math.floor(NOW - DAYS * DAY);
+  const fillStart = Math.floor(NOW - (DAYS + 180) * DAY); // WARMUP: fetch fills well before the window so pre-window holds aren't reborn as phantom shorts
   const grid: number[] = []; for (let t = startTime; t <= NOW; t += DAY) grid.push(t);
 
-  // reconstruct position series per (wallet, coin)
+  // reconstruct position series per (wallet, coin) — from the WARMUP-extended fill history
   const series = new Map<string, Map<string, ReturnType<typeof reconstructPositionSeries>>>();
   const coins = new Set<string>();
   for (const w of candidates) {
     try {
-      const fillsRaw: BtFill[] = []; let cursor = startTime;
-      for (let p = 0; p < 10; p++) {
+      const fillsRaw: BtFill[] = []; let cursor = fillStart;
+      for (let p = 0; p < 16; p++) {
         const batch = ((await info({ type: "userFillsByTime", user: w, startTime: cursor })) ?? []) as Array<Record<string, unknown>>;
         if (!batch.length) break;
         for (const f of batch) fillsRaw.push({ coin: String(f.coin), dir: String(f.dir ?? ""), sz: Number(f.sz), px: Number(f.px), time: Number(f.time) });
@@ -91,7 +92,7 @@ else {
     const mtm = bookMtmReturn(basketWeights[i], rets);
     const cost = rebalanceCost(basketWeights[i], basketWeights[i + 1], COST_BPS);
     copyReturns.push((mtm - cost) * FRACTION);
-    benchReturns.push(equalWeightLongReturn(rets) * FRACTION);
+    benchReturns.push(signMatchedReturn(basketWeights[i], rets) * FRACTION); // sign-AWARE baseline: grants the direction, isolates sizing/selection skill
   }
 
   const r = walkForwardAnalysis(copyReturns, benchReturns, { windowSize: WINDOW, step: STEP, flatBand: FLAT });
@@ -99,8 +100,8 @@ else {
   for (const w of r.windows) console.log(`    #${String(w.index).padStart(2)}   ${REG[w.regime]}  ${pct(w.copyReturn).padStart(7)}  ${pct(w.benchReturn).padStart(7)}  ${pct(w.alpha).padStart(7)}`);
   console.log(`\n  alpha by regime:`);
   for (const reg of ["up", "down", "flat"] as RegimeLabel[]) { const a = r.byRegime[reg]; if (a.n) console.log(`    ${REG[reg]}  n=${a.n}  mean alpha ${pct(a.meanAlpha)}  win-rate ${(a.winRate * 100).toFixed(0)}%`); }
-  console.log(`\n  ${r.nWindows} windows · mean alpha ${pct(r.meanAlpha)} · consistency ${(r.alphaConsistency * 100).toFixed(0)}% positive · DSR ${r.dsr.toFixed(2)}`);
-  console.log(`  alpha in UP regimes ${pct(r.alphaUp)} · alpha in DOWN regimes ${pct(r.alphaDown)}`);
+  console.log(`\n  ${r.nWindows} windows (effective N ${r.effectiveN.toFixed(1)} after ${(STEP < WINDOW ? Math.round((1 - STEP / WINDOW) * 100) : 0)}% overlap) · mean alpha ${pct(r.meanAlpha)} · t-stat ${r.tStat.toFixed(2)} · consistency ${(r.alphaConsistency * 100).toFixed(0)}%`);
+  console.log(`  alpha in UP regimes ${pct(r.alphaUp)} · alpha in DOWN regimes ${pct(r.alphaDown)}  (vs SIGN-MATCHED baseline — direction already granted)`);
   const VERDICT: Record<string, string> = {
     "regime-independent edge": "✅ REGIME-INDEPENDENT EDGE — alpha survives up AND down. Worth forward-confirming.",
     "regime-dependent (directional bet)": "⚠️ DIRECTIONAL BET — wins in down, loses in up. It's a short, not skill.",
@@ -109,5 +110,6 @@ else {
   };
   console.log(`\n  VERDICT: ${VERDICT[r.verdict]}`);
   if (!r.byRegime.up.n || !r.byRegime.down.n) console.log(`  ⚠️ coverage: only ${r.byRegime.up.n} up / ${r.byRegime.down.n} down windows — alpha untested in a missing regime.`);
-  console.log(`  ⚠️ MEMBERSHIP survivorship NOT removed: basket = TODAY's verified set, walked over past time. True membership walk-forward needs historical verified status (longitudinal store is ~1 day old).\n`);
+  console.log(`\n  FIXED (per adversarial review): sign-aware benchmark · standing positions seeded (no phantom shorts) · overlap-deflated power gate.`);
+  console.log(`  STILL OPEN: membership-as-of (basket = TODAY's verified set → survivorship short-tilt) and sub-basket disaggregation (--split). The aggregate may net away real sub-population edge.\n`);
 }

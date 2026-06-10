@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { equityFromReturns, simulateCopy, equalWeightLongReturn, sparkline, type SimPeriod } from "@/lib/exec/copy-sim";
+import { equityFromReturns, simulateCopy, equalWeightLongReturn, signMatchedReturn, sparkline, type SimPeriod } from "@/lib/exec/copy-sim";
 
 describe("equityFromReturns — compound a real bankroll", () => {
   it("a steady +1%/period grows $10k by 1.01^n", () => {
@@ -62,6 +62,29 @@ describe("equalWeightLongReturn — the beta baseline", () => {
     const rets = { BTC: 0.05 };
     const walletRet = 1 * rets.BTC;             // simulateCopy mtm with weight 1
     expect(walletRet - equalWeightLongReturn(rets)).toBeCloseTo(0, 9);
+  });
+});
+
+describe("signMatchedReturn — the sign-aware benchmark (fixes the −2×bench artifact)", () => {
+  it("carries the wallet's SIGN, so a short book's baseline profits when the coin falls", () => {
+    // short BTC (weight −0.6), long ETH (weight +0.4); BTC −10%, ETH +5%
+    const w = { BTC: -0.6, ETH: 0.4 }, rets = { BTC: -0.1, ETH: 0.05 };
+    // equal-weight sign-matched: (sign(−)*−0.1 + sign(+)*0.05)/2 = (+0.1 + 0.05)/2 = +0.075
+    expect(signMatchedReturn(w, rets)).toBeCloseTo(0.075, 9);
+    // the sign-STRIPPED long-only baseline would (wrongly) be (−0.1+0.05)/2 = −0.025
+    expect(equalWeightLongReturn(rets)).toBeCloseTo(-0.025, 9);
+  });
+  it("for a pure long book it equals the long-only baseline (no artifact to fix)", () => {
+    const w = { BTC: 0.5, ETH: 0.5 }, rets = { BTC: 0.1, ETH: -0.02 };
+    expect(signMatchedReturn(w, rets)).toBeCloseTo(equalWeightLongReturn(rets), 9);
+  });
+  it("THE FIX: a net-short book no longer manufactures ±2×bench alpha vs its sign-matched baseline", () => {
+    // wallet fully short BTC (weight −1), market falls 10% → copy gains +10%
+    const w = { BTC: -1 }, rets = { BTC: -0.1 };
+    const copy = w.BTC * rets.BTC; // signed book MTM = (−1)(−0.1) = +0.10
+    // sign-stripped baseline = −0.10 → fake alpha +0.20 (the artifact); sign-matched = +0.10 → alpha 0 (honest)
+    expect(copy - equalWeightLongReturn(rets)).toBeCloseTo(0.2, 9);   // the BUG
+    expect(copy - signMatchedReturn(w, rets)).toBeCloseTo(0, 9);      // the FIX
   });
 });
 

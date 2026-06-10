@@ -23,7 +23,8 @@ describe("cumReturn + rollingWindows", () => {
 });
 
 describe("walkForwardAnalysis — is the alpha regime-independent edge or a directional bet?", () => {
-  const mk = (copy: number[], bench: number[]) => walkForwardAnalysis(copy, bench, { windowSize: 5, step: 5, flatBand: 0.02, minWindows: 2 });
+  // minEffWindows:2 isolates the REGIME logic from the power gate (power gate tested separately below)
+  const mk = (copy: number[], bench: number[]) => walkForwardAnalysis(copy, bench, { windowSize: 5, step: 5, flatBand: 0.02, minWindows: 2, minEffWindows: 2 });
 
   it("THE SHORT-BIAS TRAP: alpha only in down windows, negative in up → 'directional bet'", () => {
     // window 1: market DOWN (bench −5%/period), copy flat → big positive alpha
@@ -57,5 +58,33 @@ describe("walkForwardAnalysis — is the alpha regime-independent edge or a dire
   it("too few windows → 'insufficient'", () => {
     const r = walkForwardAnalysis([0.01, 0.01], [0.0, 0.0], { windowSize: 2, step: 2, minWindows: 4 });
     expect(r.verdict).toBe("insufficient");
+  });
+});
+
+describe("walkForwardAnalysis — honest power gating (the fix the verification workflow demanded)", () => {
+  it("UNDERPOWERED (effective N below threshold) → 'insufficient', never a confident verdict", () => {
+    // 12 overlapping windows but 50% overlap → effectiveN ≈ 6; demand 8 → insufficient
+    const copy = Array.from({ length: 40 }, (_, i) => (i % 2 ? 0.01 : -0.005));
+    const bench = Array.from({ length: 40 }, () => 0);
+    const r = walkForwardAnalysis(copy, bench, { windowSize: 14, step: 7, minWindows: 4, minEffWindows: 8 });
+    expect(r.effectiveN).toBeCloseTo(r.nWindows * 0.5, 6);
+    expect(r.verdict).toBe("insufficient");
+  });
+  it("a positive but NOT-significant mean alpha (t < min) is 'no edge', not 'edge'", () => {
+    // flat market (bench 0); copy alternates big + / big − windows → mean alpha barely positive, huge variance
+    const blocks = [0.0192, -0.0194, 0.0192, -0.0194, 0.0192, -0.0192];
+    const copy = blocks.flatMap((v) => Array(5).fill(v));
+    const bench = Array(30).fill(0);
+    const r = walkForwardAnalysis(copy, bench, { windowSize: 5, step: 5, minWindows: 4, minEffWindows: 2, minTStat: 2 });
+    expect(r.meanAlpha).toBeGreaterThan(0);            // barely positive
+    expect(Math.abs(r.tStat)).toBeLessThan(2);         // but not significant
+    expect(r.verdict).toBe("no edge");                 // ⇒ NOT an edge
+  });
+  it("effectiveN halves with 50% overlap vs full with non-overlap", () => {
+    const x = Array.from({ length: 50 }, () => 0.001);
+    const overlap = walkForwardAnalysis(x, x, { windowSize: 14, step: 7 });
+    const noOverlap = walkForwardAnalysis(x, x, { windowSize: 14, step: 14 });
+    expect(overlap.effectiveN).toBeCloseTo(overlap.nWindows * 0.5, 6);
+    expect(noOverlap.effectiveN).toBeCloseTo(noOverlap.nWindows, 6);
   });
 });

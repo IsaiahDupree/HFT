@@ -183,7 +183,20 @@ barriers** ("will BTC *reach*/*dip to* $K in June") — those need barrier-optio
 maker only at "above/below $K on [date]" and Up/Down (strike = candle open) markets.
 
 ### Next on this lane (unchanged gates, now concrete)
-- **G2 forward track** — ✅ RUNNING as of 2026-06-10 23:28 ET. `maker:paper:daemon`
+- **CORRECTION + bug (2026-06-11 00:30 ET):** the first night of daemon sessions was POISONED by a
+  wrong-strike bug, and the honest machinery caught it via impossible fair-vs-mid divergence. The
+  Up/Down family runs THREE series at once — hourly, 15-min, and **5-min (the article's original
+  venue, back as of 2026-06-10: ":35/:40/:45…" expiries)**. The daemon assumed every range-titled
+  market was 15-min, so 5-min markets got the previous candle's open as strike → fairs off by
+  40¢+ while the market was RIGHT. What looked like "live stale-market cases" (fair 65–95¢ vs mkt
+  41–51¢) was OUR bug, not edge — a textbook lesson in trusting divergence only after the
+  reference data is verified. Fixed: `rangeDurationMinutes` (updown-title.ts, 7 regression tests)
+  parses the true duration from the title; the paper script now has an `--abort-divergence`
+  self-check (median |fair−mid| > 35¢ over the first 8 ticks ⇒ STRIKE-SUSPECT, exit 2, daemon
+  blacklists the market); `bm_sessions` records the question for forensics; the 9 poisoned
+  sessions were purged from the paper DB (6 valid daily-strike sessions remain).
+- **G2 forward track** — ✅ RUNNING as of 2026-06-10 23:28 ET (restarted with the strike fix
+  2026-06-11 00:11 ET; the ≥2-week clock restarts then). `maker:paper:daemon`
   (`scripts/maker-paper-daemon.ts`) rolls the paper maker market-to-market unattended:
   Gamma-discovers the soonest BTC Up/Down market (hourly AND the 15-minute series, which is
   BACK as of 2026-06-10 — gamma shows live "11:15PM-11:30PM ET" markets — and is the

@@ -27,6 +27,7 @@ import "./_env.ts";
 import { spawn } from "node:child_process";
 import { poly } from "../src/lib/polymarket/client.ts";
 import { proxiedFetch } from "../src/lib/data/proxy-fetch.ts";
+import { rangeDurationMinutes } from "../src/lib/strategies/updown-title.ts";
 
 const flag = (n: string, d = ""): string => {
   const i = process.argv.indexOf(n);
@@ -43,6 +44,9 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const log = (s: string) => console.log(`[${new Date().toISOString()}] ${s}`);
 
 type Target = { question: string; tokenId: string; startMs: number; endMs: number };
+
+// tokens whose session aborted STRIKE-SUSPECT — never re-enter (would loop until expiry)
+const blacklisted = new Set<string>();
 
 /** Soonest-expiring open Up/Down market for the symbol with τ ≥ MIN_TAU_SEC. */
 async function discover(): Promise<Target | null> {
@@ -72,12 +76,17 @@ async function discover(): Promise<Target | null> {
         const ids = typeof m.clobTokenIds === "string" ? JSON.parse(m.clobTokenIds) : m.clobTokenIds;
         tokenId = Array.isArray(ids) && ids[0] ? String(ids[0]) : "";
       } catch { /* skip */ }
-      if (!tokenId) continue;
+      if (!tokenId || blacklisted.has(tokenId)) continue;
 
-      // Candle start: a range title ("11:15PM-11:30PM ET") is the 15-min series;
-      // a single time ("11PM ET") is the hourly one. We only need the duration.
-      const isRange = /\d{1,2}(:\d{2})?\s*[AP]M\s*-\s*\d{1,2}(:\d{2})?\s*[AP]M/i.test(q);
-      const startMs = endMs - (isRange ? 15 * 60e3 : 3600e3);
+      // Candle start = endMs − the market's true duration, parsed from the title.
+      // The Up/Down family runs THREE series at once (hourly "11PM ET", 15-min
+      // "11:15PM-11:30PM ET", AND 5-min "11:30PM-11:35PM ET" — the 5-min series
+      // is back as of 2026-06-10). Assuming a fixed duration derives the strike
+      // from the WRONG candle — the bug that poisoned the first night of G2
+      // sessions. Parse both range endpoints; skip what we can't parse.
+      const durMin = rangeDurationMinutes(q);
+      if (durMin === null) { log(`unparseable duration, skipping: "${q}"`); continue; }
+      const startMs = endMs - durMin * 60e3;
       return { question: q, tokenId, startMs, endMs };
     }
   }
@@ -110,7 +119,8 @@ function runPaper(t: Target, strike: number): Promise<number> {
       "npx",
       ["tsx", "scripts/binary-maker-paper.ts", "--token", t.tokenId, "--symbol", SYMBOL,
         "--strike", String(strike), "--expiry-iso", new Date(t.endMs).toISOString(),
-        "--seconds", String(seconds), "--tick-ms", TICK_MS, "--fv", "enhanced"],
+        "--seconds", String(seconds), "--tick-ms", TICK_MS, "--fv", "enhanced",
+        "--question", t.question, "--abort-divergence", "35"],
       { cwd: process.cwd(), stdio: "inherit" },
     );
     const killer = setTimeout(() => { try { child.kill("SIGTERM"); } catch { /* */ } }, (seconds + 90) * 1000);
@@ -131,14 +141,26 @@ while (!stopping) {
     await sleep(PROBE_SLEEP_SEC * 1000);
     continue;
   }
+  // 5/15-min markets are listed BEFORE their candle opens — wait for the open
+  // (that's also the ideal entry: the session covers the market's whole life).
+  const untilOpenMs = target.startMs - Date.now();
+  if (untilOpenMs > 0) {
+    log(`waiting ${(untilOpenMs / 1000).toFixed(0)}s for candle open of "${target.question}"`);
+    await sleep(untilOpenMs + 2_000);
+  }
   const strike = await candleOpen(target.startMs);
   if (strike === null) {
-    // candle not started yet or kline lag — short re-probe
+    log(`strike unavailable for "${target.question}" — re-probing in 10s`);
     await sleep(10_000);
     continue;
   }
   const code = await runPaper(target, strike);
-  log(`session end (exit ${code})`);
+  if (code === 2) {
+    blacklisted.add(target.tokenId);
+    log(`session ABORTED strike-suspect — token blacklisted, skipping market`);
+  } else {
+    log(`session end (exit ${code})`);
+  }
   await sleep(5_000); // breathe before the next probe
 }
 log("daemon stopped.");

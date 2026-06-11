@@ -69,6 +69,15 @@ const FEE_CAT = (flag("--fee-category", "crypto") as FeeCategory);
 // every tick — the snapshots are the forward A/B that decides which one beats
 // the market, regardless of which one quotes.
 const FV_MODEL = flag("--fv", "enhanced") as "enhanced" | "baseline";
+// Market question (recorded in bm_sessions for forensics — which series, which candle).
+const QUESTION = flag("--question");
+// Strike sanity self-check: if the median |fair − market mid| over the first
+// SANITY_TICKS priced ticks exceeds this (in cents, 0 = off), the strike is
+// almost certainly derived from the wrong candle / wrong reference — abort
+// with exit 2 instead of logging a night of garbage. A real stale-quote edge
+// on these markets is a few cents, not 40.
+const ABORT_DIVERGENCE = Number(flag("--abort-divergence", "0")) / 100;
+const SANITY_TICKS = 8;
 
 if (!TOKEN || !STRIKE || !EXPIRY_ISO) {
   console.error("need --token <yesClobTokenId> --strike <price> --expiry-iso <ISO>");
@@ -102,6 +111,7 @@ db.exec(`
 for (const col of ["p_fair_base REAL", "p_fair_enh REAL", "mu_per_hour REAL", "hurst REAL", "fv_model TEXT"]) {
   try { db.exec(`ALTER TABLE bm_snaps ADD COLUMN ${col}`); } catch { /* exists */ }
 }
+try { db.exec("ALTER TABLE bm_sessions ADD COLUMN question TEXT"); } catch { /* exists */ }
 const SESSION = `${SYMBOL}-${STRIKE}-${Date.now()}`;
 const insFill = db.prepare(
   "INSERT INTO bm_fills (session,ts,iso,side,price,shares,rebate_usd,spot,p_fair,inv_after,cash_after) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
@@ -238,13 +248,14 @@ function pnl(markPrice: number): number {
 console.log(`binary-maker-paper | ${SYMBOL} strike ${STRIKE} | token …${TOKEN.slice(-8)} | expiry ${EXPIRY_ISO}`);
 console.log(`  τ≈${tauHoursAtStart.toFixed(2)}h size ${SIZE_SHARES} half ${(HALF_SPREAD * 100).toFixed(1)}¢ minEdge ${(MIN_EDGE * 100).toFixed(1)}¢ maxInv ${MAX_INV} fee ${FEE_CAT}`);
 console.log(`  DB ${DB_PATH} | session ${SESSION} | proxy ${agent ? "ON" : "OFF"} | fv ${FV_MODEL} (A/B logged) [PAPER — no real orders]\n`);
-db.prepare("INSERT OR REPLACE INTO bm_sessions (session,started_iso,token,symbol,strike,expiry_iso) VALUES (?,?,?,?,?,?)")
-  .run(SESSION, new Date().toISOString(), TOKEN, SYMBOL, STRIKE, EXPIRY_ISO);
+db.prepare("INSERT OR REPLACE INTO bm_sessions (session,started_iso,token,symbol,strike,expiry_iso,question) VALUES (?,?,?,?,?,?,?)")
+  .run(SESSION, new Date().toISOString(), TOKEN, SYMBOL, STRIKE, EXPIRY_ISO, QUESTION || null);
 
 await seedKlines();
 
 let running = true;
 let cycle = 0;
+const sanityGaps: number[] = [];
 process.on("SIGINT", () => { running = false; });
 process.on("SIGTERM", () => { running = false; });
 setTimeout(() => { running = false; }, SECONDS * 1000).unref?.();
@@ -266,6 +277,22 @@ while (running) {
   const fv = FV_MODEL === "enhanced" ? (fvEnh ?? fvBase) : (fvBase ?? fvEnh);
   const mkt = await fetchBook();
   if (!fv || !mkt) { await sleep(TICK_MS); continue; }
+
+  // strike sanity self-check (first SANITY_TICKS priced ticks)
+  if (ABORT_DIVERGENCE > 0 && sanityGaps.length < SANITY_TICKS) {
+    sanityGaps.push(Math.abs(fv.pFair - (mkt.bid + mkt.ask) / 2));
+    if (sanityGaps.length === SANITY_TICKS) {
+      const med = [...sanityGaps].sort((a, b) => a - b)[Math.floor(SANITY_TICKS / 2)]!;
+      if (med > ABORT_DIVERGENCE) {
+        const msg = `STRIKE-SUSPECT: median |fair−mid| ${(med * 100).toFixed(1)}¢ > ${(ABORT_DIVERGENCE * 100).toFixed(0)}¢ over first ${SANITY_TICKS} ticks — wrong candle/reference likely. Aborting (exit 2).`;
+        console.error(`  ${msg}`);
+        db.prepare("UPDATE bm_sessions SET ended_iso=?, summary=? WHERE session=?")
+          .run(new Date().toISOString(), JSON.stringify({ aborted: "strike-suspect", medianGap: +med.toFixed(4) }), SESSION);
+        db.close();
+        process.exit(2);
+      }
+    }
+  }
 
   const plan = planQuotes({
     pFair: fv.pFair,

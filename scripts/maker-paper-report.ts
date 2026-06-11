@@ -40,11 +40,18 @@ const since = DAYS > 0 ? Date.now() - DAYS * 86_400_000 : 0;
 const sessions = db.prepare("SELECT * FROM bm_sessions ORDER BY started_iso").all() as SessionRow[];
 
 const KNIFE_EDGE_BPS = 5;
+// Exclude ticks in the final EXCLUDE_TAIL_MS before expiry from the A/B: the
+// outcome label is derived from the last pre-expiry spot, so late-tick fair
+// values share their information with the label (circular free points), and
+// the daemon's 20s early stop sits inside that zone (RAILS-REVIEW P0 #4).
+const EXCLUDE_TAIL_MS = 120_000;
 let totPnlMkt = 0, totFills = 0, totRebates = 0, nSessions = 0;
 // The market mid is scored as a THIRD forecaster — the make-or-break benchmark:
 // a maker whose fair value doesn't beat the mid has no edge over the market.
+// Scored PER SESSION (mean within a session, sessions weighted equally) so a
+// long hourly session can't outvote twelve 5-min sessions (tick pooling skew).
 const brier = { base: [] as number[], enh: [] as number[], mkt: [] as number[] };
-let knifeEdgeSkipped = 0;
+let knifeEdgeSkipped = 0, scoredTicks = 0;
 
 console.log(`maker-paper-report — ${DB_PATH}${DAYS ? ` (last ${DAYS}d)` : ""}\n`);
 for (const s of sessions) {
@@ -73,16 +80,24 @@ for (const s of sessions) {
     } else {
       const y = last.spot > s.strike ? 1 : 0;
       outcomeStr = y ? "ABOVE" : "below";
+      const sess = { base: [] as number[], enh: [] as number[], mkt: [] as number[] };
       for (const sn of snaps) {
+        if (expiryMs - sn.ts < EXCLUDE_TAIL_MS) continue; // circular zone
         // score the mid ONLY on ticks where both models scored, so the three
         // Brier columns are computed over the identical tick set
         if (!Number.isFinite(sn.p_fair_base as number) || !Number.isFinite(sn.p_fair_enh as number)) continue;
         const mid = Number.isFinite(sn.mkt_bid as number) && Number.isFinite(sn.mkt_ask as number)
           ? ((sn.mkt_bid as number) + (sn.mkt_ask as number)) / 2 : NaN;
         if (!Number.isFinite(mid)) continue;
-        brier.base.push(((sn.p_fair_base as number) - y) ** 2);
-        brier.enh.push(((sn.p_fair_enh as number) - y) ** 2);
-        brier.mkt.push((mid - y) ** 2);
+        sess.base.push(((sn.p_fair_base as number) - y) ** 2);
+        sess.enh.push(((sn.p_fair_enh as number) - y) ** 2);
+        sess.mkt.push((mid - y) ** 2);
+      }
+      if (sess.base.length >= 5) { // need a real in-session sample
+        scoredTicks += sess.base.length;
+        brier.base.push(sess.base.reduce((s, x) => s + x, 0) / sess.base.length);
+        brier.enh.push(sess.enh.reduce((s, x) => s + x, 0) / sess.enh.length);
+        brier.mkt.push(sess.mkt.reduce((s, x) => s + x, 0) / sess.mkt.length);
       }
     }
   } else if (expired) {
@@ -102,9 +117,9 @@ for (const s of sessions) {
 const mean = (a: number[]) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : NaN);
 console.log(`\n── aggregate (${nSessions} sessions) ──`);
 console.log(`  paper PnL (marked to market, OPTIMISTIC): $${totPnlMkt.toFixed(2)}  fills ${totFills}  rebates $${totRebates.toFixed(2)}`);
-console.log(`  model A/B/market (Brier, lower better, ${brier.base.length} scored ticks, ${knifeEdgeSkipped} knife-edge sessions excluded):`);
+console.log(`  model A/B/market (Brier, lower better; session-weighted over ${brier.base.length} scored sessions / ${scoredTicks} ticks; final ${EXCLUDE_TAIL_MS / 1000}s excluded as circular; ${knifeEdgeSkipped} knife-edge sessions excluded):`);
 console.log(`    baseline ${mean(brier.base).toFixed(4)}   enhanced ${mean(brier.enh).toFixed(4)}   MARKET MID ${mean(brier.mkt).toFixed(4)}`);
-if (brier.base.length >= 500) {
+if (brier.base.length >= 30) {
   const bestModel = Math.min(mean(brier.base), mean(brier.enh));
   const better = mean(brier.enh) < mean(brier.base) ? "ENHANCED" : "BASELINE";
   console.log(`    → ${better} is winning the model A/B (ticks are autocorrelated — judge across many sessions, not one).`);

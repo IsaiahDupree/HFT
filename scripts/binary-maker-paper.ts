@@ -361,8 +361,24 @@ while (running) {
 // ── shutdown summary ──
 try { bn.close(); } catch { /* */ }
 const lastBook = await fetchBook();
-const markMid = lastBook ? (lastBook.bid + lastBook.ask) / 2 : 0.5;
 const finalFv = fairValueFromMinuteCloses({ spot, strike: STRIKE, nowMs: Date.now(), expiryMs, minuteCloses, volBars: VOL_BARS });
+// Final mark, honestly sourced (RAILS-REVIEW P0: a silent 0.5 fallback injected
+// up to ±$125/session of fake PnL whenever the last book fetch failed). Prefer
+// the live book; else the session's last recorded market mid; else our final
+// fair; 0.5 only when truly nothing is known — and always SAY which was used.
+const lastSnapMid = (() => {
+  const r = db.prepare("SELECT mkt_bid, mkt_ask FROM bm_snaps WHERE session=? ORDER BY ts DESC LIMIT 1").get(SESSION) as
+    { mkt_bid: number | null; mkt_ask: number | null } | undefined;
+  return r && Number.isFinite(r.mkt_bid as number) && Number.isFinite(r.mkt_ask as number)
+    ? ((r.mkt_bid as number) + (r.mkt_ask as number)) / 2 : null;
+})();
+const [markMid, markSource] = lastBook
+  ? [(lastBook.bid + lastBook.ask) / 2, "book"]
+  : lastSnapMid !== null
+    ? [lastSnapMid, "last-snapshot-mid"]
+    : finalFv
+      ? [finalFv.pFair, "final-fair"]
+      : [0.5, "UNKNOWN-0.5"];
 const summary = {
   session: SESSION,
   cycles: cycle,
@@ -371,6 +387,7 @@ const summary = {
   cashUsd: +cash.toFixed(4),
   rebatesUsd: +rebates.toFixed(4),
   markMid: +markMid.toFixed(4),
+  markSource,
   pFair: finalFv ? +finalFv.pFair.toFixed(4) : null,
   pnlMarkUsd: +pnl(markMid).toFixed(4),
   pnlFairUsd: finalFv ? +pnl(finalFv.pFair).toFixed(4) : null,

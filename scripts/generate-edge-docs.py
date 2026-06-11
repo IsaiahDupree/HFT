@@ -262,8 +262,9 @@ EDGES.append((
             ["Sessions / fills", "183 / 1,650"],
             ["Paper PnL (optimistic front-of-queue fills)", "−$2,066"],
             ["Rebates", "+$118"],
-            ["Model A/B (13,566 ticks)", "baseline Brier 0.1068 BEATS enhanced 0.1105 — momentum+Hurst not earning its keep"],
-            ["MARKET MID benchmark (the make-or-break)", "mid Brier 0.1063 BEATS both models — the fair value has NO edge over the book; the maker was supplying edge, not capturing it"],
+            ["Model A/B (session-weighted, final 120s excluded as circular)", "baseline Brier 0.1198 BEATS enhanced 0.1247 — momentum+Hurst not earning its keep"],
+            ["MARKET MID benchmark (the make-or-break)", "mid Brier 0.1186 BEATS both models (129 sessions / 9,891 ticks) — the fair value has NO edge over the book; the maker was supplying edge, not capturing it"],
+            ["Rails review (17 findings)", "−$2,066 is itself optimistic: fill sim has maker-favorable lookahead; failed final book fetch marked at 0.5; the cap-and-ride mechanism is the minEdge gate killing the inventory-REDUCING quote (see docs/research/RAILS-REVIEW-2026-06-11.md)"],
             ["Diagnosis", "naked inventory rides directional moves into resolution; adverse selection ≫ spread+rebates; and the fair the quotes anchor on is no better than the mid"],
         ])),
         ("What it taught (why it stays running)", [

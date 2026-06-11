@@ -311,11 +311,16 @@ fair value (`maker:paper:daemon`, 24/7 across the 5-min/15-min/hourly series).
 - **First ~18h clean data (183 sessions, 1,650 fills):** **−$2,066 paper** (and fills are
   OPTIMISTIC front-of-queue), rebates only $118. Naked inventory rides directional moves into
   resolution — adverse selection dwarfs spread+rebates.
-- **Model A/B/market (13,566 scored ticks): MARKET MID 0.1063 beats baseline 0.1068 beats
-  enhanced 0.1105.** The market's own mid is a better forecaster than our fair value — the fair
-  carries NO information beyond the book (baseline nearly ties; enhanced is clearly worse). A
-  maker quoting off a worse fair than the mid is *supplying* edge. This is the formal demotion
-  of the naked-FV thesis, delivered by its own pre-registered benchmark.
+- **Model A/B/market: MARKET MID beats baseline beats enhanced** — and the ranking SURVIVED the
+  methodology audit (RAILS-REVIEW found the naive pooled scoring circular near expiry and
+  tick-pool-skewed toward hourly sessions; after excluding the final 120s and weighting per
+  session: **mid 0.1186 < baseline 0.1198 < enhanced 0.1247** over 129 sessions / 9,891 ticks).
+  The fair value carries NO information beyond the book. A maker quoting off a worse fair than
+  the mid is *supplying* edge. This is the formal demotion of the naked-FV thesis, delivered by
+  its own pre-registered benchmark. Review also showed the −$2,066 is itself OPTIMISTIC (fill
+  sim has maker-favorable lookahead; a failed final book fetch used to mark at 0.5) — the true
+  naked-maker PnL is worse. Full findings: `docs/research/RAILS-REVIEW-2026-06-11.md` (17
+  findings; the cap-and-ride mechanism is the minEdge gate killing the inventory-REDUCING quote).
 - **Verdict (2026-06-11): the lane's edge is in PAIRED quoting (merge lane), not a better fair
   value.** Consistent with every profitable wallet examined (all pair/merge; none holds naked
   inventory). G2 keeps running as infrastructure + a data feed for G3, but promotion of naked

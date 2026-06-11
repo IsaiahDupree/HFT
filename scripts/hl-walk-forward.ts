@@ -16,6 +16,7 @@ import { reconstructPositionSeries, positionAt, type Fill as BtFill } from "../s
 import { netBookWeights, priceReturns, bookMtmReturn, rebalanceCost, type NetPosition } from "../src/lib/exec/netbook-copy.ts";
 import { signMatchedReturn } from "../src/lib/exec/copy-sim.ts";
 import { walkForwardAnalysis, type RegimeLabel } from "../src/lib/exec/walk-forward-copy.ts";
+import { normalCdf } from "../src/lib/backtest/candle/stats.ts";
 
 const num = (n: string, d: number): number => { const i = process.argv.indexOf(n); return i >= 0 && process.argv[i + 1] != null ? Number(process.argv[i + 1]) : d; };
 const str = (n: string): string | undefined => { const i = process.argv.indexOf(n); return i >= 0 ? process.argv[i + 1] : undefined; };
@@ -133,12 +134,19 @@ else {
   console.log(`  wallet        eff-N  meanAlpha  t-stat  verdict`);
   for (const p of perWallet.slice(0, 8)) console.log(`  ${p.w.slice(0, 12)}  ${p.r.effectiveN.toFixed(1).padStart(5)}  ${pct(p.r.meanAlpha).padStart(8)}  ${p.r.tStat.toFixed(2).padStart(6)}  ${VERDICT[p.r.verdict]}`);
 
-  // ---- WINNERS: any sub-group with a real, significant, regime-independent edge ----
-  const winners = [
-    ...bucketRows.filter((b) => b.r.verdict === "regime-independent edge").map((b) => `bucket ${b.k} (n=${b.addrs.length}, alpha ${pct(b.r.meanAlpha)}, t ${b.r.tStat.toFixed(2)})`),
-    ...perWallet.filter((p) => p.r.verdict === "regime-independent edge").map((p) => `wallet ${p.w.slice(0, 12)} (alpha ${pct(p.r.meanAlpha)}, t ${p.r.tStat.toFixed(2)})`),
-  ];
-  console.log(`\n  ${winners.length ? "🎯 CANDIDATES with regime-independent edge → promote to forward paper-track:\n    " + winners.join("\n    ") : "❌ NO sub-basket or wallet shows a significant regime-independent edge. Disaggregation did not rescue a hidden edge."}`);
+  // ---- WINNERS, multiple-testing CORRECTED. Per-wallet scanning N wallets is N trials: at the t≥1.5 gate you
+  // EXPECT N·P(t≥1.5) winners by pure chance. A single flagged wallet is only credible if it clears a
+  // Bonferroni-corrected bar (one-sided p < 0.05/N), i.e. it beats the data-snooping you just did to find it.
+  const nTrials = perWallet.length;
+  const pOne = (t: number) => 1 - normalCdf(t);                       // one-sided normal tail (eff-N small ⇒ optimistic, so this is generous)
+  const expectedFP = nTrials * pOne(1.5);                            // chance winners at the verdict gate
+  const bonferroniP = 0.05 / Math.max(1, nTrials);                   // family-wise 0.05
+  const rawWinners = perWallet.filter((p) => p.r.verdict === "regime-independent edge");
+  const credible = rawWinners.filter((p) => pOne(p.r.tStat) < bonferroniP);
+  console.log(`\n  === MULTIPLE-TESTING CHECK (per-wallet scan = ${nTrials} trials) ===`);
+  console.log(`  raw "edge" flags: ${rawWinners.length}  ·  expected by CHANCE at the t≥1.5 gate: ~${expectedFP.toFixed(1)}  ·  Bonferroni bar: t≥${(() => { let t = 1.5; while (pOne(t) >= bonferroniP && t < 6) t += 0.01; return t.toFixed(2); })()}`);
+  if (rawWinners.length) console.log(`  top raw flag ${rawWinners[0].w.slice(0, 12)} t=${rawWinners[0].r.tStat.toFixed(2)} (p=${pOne(rawWinners[0].r.tStat).toFixed(3)}) — ${pOne(rawWinners[0].r.tStat) < bonferroniP ? "PASSES" : "FAILS"} the corrected bar`);
+  console.log(`\n  ${credible.length ? "🎯 CREDIBLE (Bonferroni-corrected) candidates → forward paper-track:\n    " + credible.map((p) => `${p.w.slice(0, 12)} (alpha ${pct(p.r.meanAlpha)}, t ${p.r.tStat.toFixed(2)})`).join("\n    ") : `❌ NO credible edge. ${rawWinners.length} raw flag(s) vs ~${expectedFP.toFixed(1)} expected by chance — consistent with PURE NOISE. Disaggregation did not rescue a hidden edge.`}`);
   console.log(`\n  FIXED: sign-aware benchmark · seeded standing positions · overlap power-gate · BTC-tagged regimes · disaggregated.`);
   console.log(`  STILL OPEN: membership-as-of (needs more longitudinal history; store is days old, not 90d).\n`);
 }

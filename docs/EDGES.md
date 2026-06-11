@@ -230,6 +230,35 @@ exists to say this in one voice every time.
 
 ---
 
+## ❌ Stablecoin peg mean-reversion — rejected as a *continuous* edge; it's a rare-EVENT trade (2026-06-10)
+
+The hypothesis was sharp: crypto is momentum (pairs-MR dies), but stablecoins are the structural exception —
+pinned to $1 by redemption/arb, so peg deviations should revert (a locked anchor like calendar-basis convergence).
+Built no-lookahead (`src/lib/exec/stable-mr.ts`, +8 tests) and ran the full gauntlet on **real Binance hourly
+klines** for USDC/TUSD/FDUSD vs USDT, ~540d (`npm run backtest:stable-mr`).
+
+| Test | Result |
+|---|---|
+| Best variant (entry 20bp / 168h) | APR **+1.1%**, Sharpe **0.44** — tiny |
+| Overfit battery | **PBO 0.34** (want <0.30), **DSR 0.33** (want >0.95) — ❌ overfit |
+| Block-shuffle control (200 perms, 24h blocks) | real Sharpe 0.44 vs **shuffled null mean 2.70, p=1.000** — ❌ shuffling the bar order does BETTER ⇒ zero real reversion structure |
+| Cost realism | positive at 1–2 bps, **negative at ≥5 bps/side** — ❌ fee-dominated |
+| Beta (hold the stable) | −0.05% APR (≈0) — confirms it's ~pure-alpha, but there's no alpha |
+
+**Verdict: FAILS (1/4) — not a continuous edge.** The decisive *why*: the 540d window (Dec-2024→now) contains
+**no actual depeg** (the SVB USDC crisis was Mar-2023, outside it). With no real dislocation to revert, the residual
+deviations are sub-10bp bid-ask micro-noise — and like the intraday families, the gross move is **smaller than the
+fee to trade it**. The shuffle's p=1.000 is the clean tell: there is nothing temporal to exploit in calm regimes.
+
+**The sharpened map:** stablecoin MR is a **rare-EVENT trade** (buy a *real* depeg — USDC at 0.88 in the SVB
+event reverted to 1.00), not a yield you harvest continuously. And the event is doubly cursed: the depegs big
+enough to clear fees are exactly the moments where the **terminal-collapse tail** (UST→0, the depeg that never
+recovers) is live. So even the event version is "catch a falling knife that *usually* bounces" — sized for the
+tail, not the Sharpe. Reproducible: `scripts/backtest-stable-mr.ts`. (A proper event test needs 2023 data; DAIUSDT
+delisted and USDPUSDT failed to fetch, so only the calm-regime — and clearly-negative — result is established.)
+
+---
+
 ## Methodology notes worth remembering
 
 - **Beta benchmark is mandatory.** "It made 126×" means nothing until you compare to holding the

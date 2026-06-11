@@ -177,6 +177,7 @@
     "liq:monitor": "tsx scripts/monitor-liq-cascade.ts",
     "liq:monitor:live": "tsx scripts/monitor-liq-cascade.ts -- --live",
     "poly:leadlag": "tsx scripts/binance-poly-leadlag.ts",
+    "leadlag:campaign": "tsx scripts/leadlag-campaign.ts",
     "maker:paper": "tsx scripts/binary-maker-paper.ts"
   },
   "dependencies": {

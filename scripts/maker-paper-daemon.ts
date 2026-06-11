@@ -121,7 +121,11 @@ function runPaper(t: Target, strike: number): Promise<number> {
         "--strike", String(strike), "--expiry-iso", new Date(t.endMs).toISOString(),
         "--seconds", String(seconds), "--tick-ms", TICK_MS, "--fv", "enhanced",
         "--question", t.question, "--abort-divergence", "35",
-        "--duration-min", String(Math.round((t.endMs - t.startMs) / 60e3))],
+        "--duration-min", String(Math.round((t.endMs - t.startMs) / 60e3)),
+        // calibrated to the PROFITABLE updown makers (SWEEP-2026-06-11-ROUND2):
+        // $1-14 median fills and tight inventory; the -$1.29M dead maker ran 4x
+        // clips. 25 shares ≈ $5-15 per fill at typical prices.
+        "--size", "25", "--max-inventory", "250"],
       { cwd: process.cwd(), stdio: "inherit" },
     );
     const killer = setTimeout(() => { try { child.kill("SIGTERM"); } catch { /* */ } }, (seconds + 90) * 1000);

@@ -76,7 +76,11 @@ export const poly = {
   },
   event: (id: number | string) => get<any>(`${readEnv().GAMMA}/events/${id}`),
   marketsByCondition: (conditionIds: string[], opts: { closed?: boolean; archived?: boolean } = {}) => {
-    const qs = new URLSearchParams({ condition_ids: conditionIds.join(",") });
+    // Gamma stopped honoring comma-joined condition_ids (returns [] SILENTLY,
+    // observed 2026-06-11 — it zeroed copy-backtest's resolved mode). The API
+    // wants the param REPEATED: ?condition_ids=a&condition_ids=b.
+    const qs = new URLSearchParams();
+    for (const id of conditionIds) qs.append("condition_ids", id);
     if (opts.closed !== undefined) qs.set("closed", String(opts.closed));
     if (opts.archived !== undefined) qs.set("archived", String(opts.archived));
     return get<any[]>(`${readEnv().GAMMA}/markets?${qs}`);

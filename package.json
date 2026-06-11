@@ -149,6 +149,7 @@
     "backtest:carry-regime": "tsx scripts/backtest-carry-regime.ts",
     "backtest:cross-edge": "tsx scripts/backtest-cross-edge.ts",
     "backtest:stable-mr": "tsx scripts/backtest-stable-mr.ts",
+    "vol:surface": "tsx scripts/vol-surface-scan.ts",
     "carry:paper-snapshot": "tsx scripts/carry-paper-snapshot.ts",
     "carry:paper-cron": "zsh scripts/cron-carry-paper.sh",
     "carry:now": "tsx scripts/carry-now.ts",

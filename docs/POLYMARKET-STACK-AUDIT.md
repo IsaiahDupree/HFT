@@ -86,6 +86,74 @@ Everything else: gone (HyperBuildX, FiatFiorino, dylanpersonguy), irrelevant
 financial-datasets MCP — wrong asset class or duplicates Claude/ACD capability we have),
 or author padding (ClaudeAgentOneClick).
 
+### Round 2 — 2026-06-11 (discovery beyond the article's list)
+
+Method: GitHub search API (`gh`, read-only) across "polymarket bot / market maker /
+arbitrage / copy / historical data / btc updown / 5 minute", sorted by stars AND
+recently-updated; owner-account vetting (age, repo history, followers); install-hook
+review of every candidate's package.json/pyproject (no preinstall/postinstall/build.rs
+in any ADOPT below); stargazer-sample bot checks on fast risers; plus the
+starred/forked graphs of the legit Round-1 authors (evan-kolberg, NYTEMODEONLY,
+ent0n29). All ADOPTs shallow-cloned into `~/Documents/Software/quarantine/` and
+pattern-scanned (no base64-decode/eval/exfil hits). NOTHING installed or run.
+
+Endorsement signal used: **evan-kolberg forks `warproxxx/poly_data`** — the one
+author we trust most points at the warproxxx data stack.
+
+#### ADOPT (cloned to quarantine 2026-06-11; read before any run, never funded keys)
+| Repo | What it is | Why |
+|---|---|---|
+| `warproxxx/poly_data` (2.1k★, owner 2016) | Polymarket data pipeline: markets, order events, trades (on-chain + API), pandas/polars. | Historical-data tooling; forked by evan-kolberg himself; deps clean. |
+| `warproxxx/poly-maker` (1.3k★) | THE reference open Polymarket market-making bot (py-clob-client, merge logic, position mgmt). | Direct read for our binary-maker lane. Wants `PK` in .env as any live MM would — read-only, never fund. |
+| `pmxt-dev/pmxt` (1.9k★, org Jan 2026) | "CCXT for prediction markets" SDK + the vendor whose FREE hourly L2 archive (r2/r2v2.pmxt.dev) our G3 path uses. | We now depend on their archive; SDK is self-hosted/free; clean scripts. |
+| `KaustubhPatange/polymarket-trade-engine` (279★, organic stars per sample; owner 2016, known OSS dev) | TS trading engine specifically for BTC Up/Down 5-min binaries (clob-client-v2, strategy framework). | Exactly our market family; active through 2026-06-08. |
+| `guzus/dr-manhattan` (187★, owner 2019) | Python unified prediction-market API + MCP server + backtest dir; MM examples. | Second data/MM toolkit perspective vs pmxt; clean pyproject. |
+| `doge-8/btc5m-web` (13★, owner 2021) | Quick-order tool + pluggable strategy framework + data collector for Polymarket BTC/ETH/SOL 5m. | Small/readable; its `collect` path is a 5-min-series recorder. Wants PK for live — never fund. |
+| `ElijahPrince73/polymarket-btc-5m-assistant` (9★ Rust, owner 2015, pushed Jun 10) | Paper-trading assistant for BTC 5m Up/Down; paper-only when keys blank. | Keyless-by-default design; documents series slug `btc-up-or-down-15m`, series id 10192, and the 2026-04-28 CLOB V2 cutover. |
+
+#### IDEAS-ONLY (round 2 — read for concepts; don't run)
+| Repo | The idea worth taking |
+|---|---|
+| `YazRaso/polymarket_historical_orderbook_reconstruction` | A pipeline decoding the same PMXT hourly raws we'll port — compare decode logic. |
+| `MixasV/Polymarket-recorder` | Minimal 15m BTC Up/Down price-recorder design. |
+| `Polymarket/poly-market-maker` (official, 303★, stale 2024) | Canonical band/order-management patterns from Polymarket themselves. |
+| `Jonmaa/btc-polymarket-bot` (73★, dead Jan 2026) | Prior-era 15m Up/Down bot — what the last cohort tried. |
+| `polyresearchrobotics/UpDownWalletMonitor` (new acct) | Real-time wallet-tracking across 5m markets — read for our observe:wallet lane. |
+| `OctagonAI/kalshi-trading-bot-cli` (316★, real co) | AI research→trade CLI structure for Kalshi. |
+| `Drakkar-Software/OctoBot-Prediction-Market` (real OctoBot org) | Generic PM extension architecture. |
+| `braedonsaunders/homerun` (81★, owner 2017) | Polymarket+Kalshi Python strategy platform — overlaps what HFT-work already has. |
+| `aarora4/Awesome-Prediction-Market-Tools` (471★) | Link mine — but several entries are the very bot-shops banned below. |
+| `LeonardoBerti00/TLOB` (starred by evan-kolberg) | Transformer LOB price-prediction model — fair-value research direction. |
+
+#### SKIP / BANNED (round 2)
+| Repo | Reason |
+|---|---|
+| `YichengYang-Ethan/oracle3` (248★) | **Stars BOTTED** — stargazer sample is batch-created zero-follower farm accounts. |
+| `sitodowubb/polymarket-arbitrage-bot` (227★, **7,444 forks**) | Fork-farm distribution; spam description; owner Jan-2026, 0 followers. |
+| `Composio-HQ/polymarket-kalshi-arbitrage-bot` (68★, **2,970 forks**) | **Typosquat** of real ComposioHQ; week-old single-repo owner; fork-farm. |
+| `Obsidian-Trades/polymarket-copy-trading-bot` (50★/455 forks) | Repo created+abandoned same day; owner 9 days old. |
+| `PolyBullLabs/polymarket-5min-15min-1hour-arbitrage-trading-bot` (226★) | Forks>stars; owner account YOUNGER than the repo (transferred-in); bot-shop. |
+| `radioman/polymarket-arbitrage-trading-bot` (466★) | Repo "created 2016" — renamed old repo to inherit age/stars; Polymarket didn't exist then. |
+| `hanshaze/Awesome-Prediction-Market-Trading-Tools` (178★) | Same renamed-2017-repo trick; serial bot-shop owner (359 repos). |
+| `echandsome/Polymarket-betting-bot`, `G3-DEV-AGENCY/*`, `TradeSEB/*`, `devdasx/*` | Freelancer/agency lead-gen copy-bot clones; copy-trading is structurally broken for the maker wallet anyway (§1). |
+| `HarrierOnChain/Prediction-Markets-Trading-Bot-Toolkits` (270★) | "Toolkits" aggregator lead-gen. |
+| `0mnjb/Kalshi-AI-Trading-Bot` + `llllllilllll/Kalshi-Trade-Bot` + `AsArchitects/Kalshi-trade-bot` | README-only scam farm: three ~80★ no-code repos created the same week (Mar 2026). |
+| `quipmnxailcrrgky/tradingbot`, `bit-nexusxtitmtdsuy/Polymarket_Bot` | Gibberish-name owners; bot-shop signature. |
+| `meloner3/poly-kalshi-sports-bot` (128★) | Single-day commit history; sports, off-thesis. |
+| `suislanchez/polymarket-kalshi-weather-bot` (432★), `ryanfrigo/kalshi-ai-trading-bot` (428★) | Off-thesis (weather/LLM-Kalshi); star authenticity unverified. |
+| `Thuglife22741/polymarket-BTC-15-Minute-Trading-Bot`, `dearolaf/Polymarket-BTC-5Minutes-Trading-Bot` (created Jun 8–10) | Day-old unvetted clones chasing the 5/15-min relaunch — but good *evidence the lane is hot again*. |
+
+Flag, not a ban: `alsk1992/CloddsBot` (356★) ships a `postinstall` npm hook
+(caches a Xenova embedding model — looks benign) AND is a key-custodial
+multi-chain agent (Drift/Jupiter/Kamino SDKs). Surface too big; ideas only,
+never install.
+
+Cross-reference: the G3 data assessment for the Round-1 ADOPT
+(`evan-kolberg/prediction-market-backtesting`) is in
+`docs/research/EVAN-KOLBERG-BACKTESTER-ASSESS.md` — bottom line: PMXT free R2
+archive (2026-02-21→now, verified live by HEAD probes) + our own eth_getLogs
+fills = $0 G3 data path; Telonex $79/mo only if we need pre-Feb-2026 depth.
+
 ### Services
 - `polymarketanalytics.com` — legit free analytics, "supported by Polymarket". Useful.
 - `polywhaler.com` — real SaaS; data tier maybe; pushes referral copy-bots. Caution.

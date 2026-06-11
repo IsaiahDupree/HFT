@@ -23,6 +23,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { poly } from "../src/lib/polymarket/client.ts";
+import { rangeDurationMinutes } from "../src/lib/strategies/updown-title.ts";
 
 const flag = (n: string, d = ""): string => {
   const i = process.argv.indexOf(n);
@@ -71,14 +72,20 @@ function isCryptoBinary(q: string): boolean {
 
 async function discover(): Promise<Pick_[]> {
   const now = Date.now();
-  const events = await poly.events({
-    limit: 200,
-    closed: false,
-    end_date_min: new Date(now).toISOString(),
-    end_date_max: new Date(now + HORIZON_H * 3_600_000).toISOString(),
-    order: "endDate",
-    ascending: true,
-  });
+  let events: any[];
+  try {
+    events = await poly.events({
+      limit: 200,
+      closed: false,
+      end_date_min: new Date(now).toISOString(),
+      end_date_max: new Date(now + HORIZON_H * 3_600_000).toISOString(),
+      order: "endDate",
+      ascending: true,
+    });
+  } catch (e) {
+    console.error(`gamma discover failed: ${(e as Error).message.slice(0, 120)}`);
+    return [];
+  }
 
   const picks: Pick_[] = [];
   for (const ev of events ?? []) {
@@ -98,18 +105,26 @@ async function discover(): Promise<Pick_[]> {
       } catch { /* skip */ }
       if (!tokenId) continue;
 
+      // Live book mid first — gamma's outcomePrices is STALE on fresh short-lived
+      // markets (e.g. 0.115 while the actual book sits 48/49¢).
       let mid = NaN;
-      try {
-        const prices = typeof m.outcomePrices === "string" ? JSON.parse(m.outcomePrices) : m.outcomePrices;
-        mid = Number(Array.isArray(prices) ? prices[0] : NaN);
-      } catch { /* skip */ }
-      if (!Number.isFinite(mid) && Number.isFinite(Number(m?.bestBid)) && Number.isFinite(Number(m?.bestAsk))) {
+      if (Number.isFinite(Number(m?.bestBid)) && Number.isFinite(Number(m?.bestAsk)) && Number(m?.bestAsk) > 0) {
         mid = (Number(m.bestBid) + Number(m.bestAsk)) / 2;
+      } else {
+        try {
+          const prices = typeof m.outcomePrices === "string" ? JSON.parse(m.outcomePrices) : m.outcomePrices;
+          mid = Number(Array.isArray(prices) ? prices[0] : NaN);
+        } catch { /* skip */ }
       }
       if (!Number.isFinite(mid) || !isNtm(mid)) continue;
 
+      // Short-lived series (5/15-min) never accrue 24h volume — gate them on
+      // BOOK LIQUIDITY instead (real depth: BTC 5-min carries ~$8-10k).
+      const durMin = rangeDurationMinutes(q);
       const vol24 = Number(m?.volume24hr ?? ev?.volume24hr ?? 0);
-      if (!(vol24 >= MIN_VOL24)) continue;
+      const liq = Number(m?.liquidityNum ?? m?.liquidity ?? 0);
+      const eligible = durMin !== null && durMin <= 15 ? liq >= MIN_VOL24 / 5 : vol24 >= MIN_VOL24;
+      if (!eligible) continue;
 
       const endMs = Date.parse(m?.endDate ?? ev?.endDate ?? "");
       if (!Number.isFinite(endMs) || endMs <= now) continue;

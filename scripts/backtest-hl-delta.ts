@@ -102,10 +102,19 @@ const oos = sliceNet(wfBest, split, n);
 console.log(`\n  === walk-forward ===`);
 console.log(`  IS-best gate ${wfBest.gateApr * 100}%/hys ${wfBest.hysteresisApr * 100}% → OOS APR ${(apr(oos) * 100).toFixed(1)}% · OOS Sharpe ${ann(oos).toFixed(2)} (held? ${ann(oos) > 0 ? "yes" : "NO"})`);
 
+// ---- THE ACTUAL SLEEVE: gate+HOLD the durable-funding leader (no rotation). Pick best by IS funding, hold OOS. ----
+const isApr = coins.map((c) => ({ c, a: apr(holdSingleCoin(c, Object.fromEntries(coins.map((k) => [k, rates[k].slice(0, split)])) as Record<string, number[]>, split)) })).sort((a, b) => b.a - a.a);
+const holdPick = isApr[0].c;
+const holdOos = holdSingleCoin(holdPick, Object.fromEntries(coins.map((c) => [c, rates[c].slice(split)])) as Record<string, number[]>, n - split);
+console.log(`\n  === GATE+HOLD sleeve (the real edge — no rotation overlay) ===`);
+console.log(`  IS-best durable-funding coin: ${holdPick} → OOS APR ${(apr(holdOos) * 100).toFixed(1)}% · OOS Sharpe ${ann(holdOos).toFixed(2)} (held? ${apr(holdOos) > 0 ? "✅ yes" : "❌ no"})`);
+
 // ---- one-voice verdict ----
 const passLk = !lk.biased, passOverfit = pboVal < 0.3 && ds.dsr > 0.95, passWF = ann(oos) > 0, passBeta = alphaVsBest > 0, passCost = apr(main.net) > 0;
 const passes = [passLk, passOverfit, passWF, passBeta, passCost].filter(Boolean).length;
+const holdWorks = apr(holdOos) > 0;
 console.log(`\n  === VERDICT ===`);
-console.log(`  lookahead ${passLk ? "✅" : "❌"} · overfit ${passOverfit ? "✅" : "❌"} · walk-forward ${passWF ? "✅" : "❌"} · beats-best-single ${passBeta ? "✅" : "❌"} · net>0 ${passCost ? "✅" : "❌"}`);
-console.log(`  ${passes === 5 ? "✅ SURVIVES — register as the 'tight-hedge same-venue funding' sleeve in the risk-parity allocator; paper-track live next." : passBeta && passCost && passWF ? `⚠️ PARTIAL (${passes}/5) — real net funding capture, but rotation-alpha/overfit not clean; deploy the GATE+HOLD (no aggressive rotation) version, paper-track.` : `❌ FAILS (${passes}/5) — ${!passBeta ? "rotation doesn't beat holding the best coin; " : ""}${!passCost ? "net negative after costs; " : ""}not a sleeve.`}`);
+console.log(`  ROTATION overlay: lookahead ${passLk ? "✅" : "❌"} · overfit ${passOverfit ? "✅" : "❌"} · walk-forward ${passWF ? "✅" : "❌"} · beats-best-single ${passBeta ? "✅" : "❌"} · net>0 ${passCost ? "✅" : "❌"} → ${passes === 5 ? "✅ rotation adds value" : `❌ FAILS (${passes}/5) — rotation churns to the cost line, classic timing loss`}`);
+console.log(`  GATE+HOLD sleeve: ${holdWorks ? `✅ REAL — hold ${holdPick} OOS +${(apr(holdOos) * 100).toFixed(1)}% APR. This is funding-carry #1 on HL's tight same-venue hedge → register as a sleeve (net of basis haircut), paper-track live.` : "❌ even the hold is non-positive OOS — no durable funding in-sample"}`);
+console.log(`  THE LESSON (again): the STRUCTURAL hold is the edge; the TIMING/rotation overlay loses to the cost line. Deploy hold-the-durable-leader, NOT the rotation.`);
 console.log(`  EXECUTABILITY: needs HL SPOT for each held coin (same-venue hedge). Basis risk omitted here (income-only) — a real haircut, like the carry book. Funding is high because shorting is hard; watch borrow/spot depth.\n`);

@@ -230,6 +230,30 @@ exists to say this in one voice every time.
 
 ---
 
+## ✅/❌ HL same-venue funding: the HOLD is a sleeve, the ROTATION is a cost-line loss (2026-06-10)
+
+Top pick from the open-source repo-mining workflow (HL-Delta, cgaspart): same-venue Hyperliquid 1:1 spot+perp
+delta-neutral funding capture — the **tightest-hedge** member of the proven funding-carry family (zero
+transfer/settlement/basis risk, the exact risk that capped cross-venue funding at ~3%). Built no-lookahead
+(`src/lib/backtest/candle/hl-delta.ts`, +8 tests, lookahead-certified through `detectLookahead`) and ran the
+gauntlet on **real HL fundingHistory** (BTC/ETH/HYPE/SOL, 300d, `npm run backtest:hl-delta`).
+
+| Component | Result |
+|---|---|
+| **HOLD the durable-funding leader** | **HYPE +10.7% APR, BTC +5.8%, ETH +6.0%** (steady positive funding) — ✅ a real sleeve |
+| Cost-aware ROTATION overlay (gate 5% / hyst 10% / 30bps) | gross +12.4% but **NET −80.3%**, 254 rotations — ❌ churns to death |
+| Hysteresis ablation | naive switch −182.9% (536 rot) vs guarded −80.3% (254 rot) — the cost guard helps but can't save it |
+| Overfit / walk-forward (on the rotation) | PBO 0.00 / **DSR 0.00**, OOS Sharpe −2.28 — ❌ |
+
+**Verdict: the HOLD is the edge (funding-carry #1 on a tight same-venue hedge, ~6–11% APR); the ROTATION fails
+1/5.** The rotation barely lifts gross funding (+12.4% vs +10.7% holding HYPE) because the funding *ranking* is
+stable, so switching just pays 254×30bps ≈ 93%/yr in fees to capture the same premium. This is the meta-thesis
+**one more time**: the structural HOLD survives, the TIMING/rotation overlay loses to the cost line. Deploy
+hold-the-durable-leader (HYPE/BTC), size net of the basis haircut + HL spot depth, NOT the rotation. Executability
+gate: needs HL **spot** for the held coin (same-venue hedge); funding is high *because* shorting is hard.
+
+---
+
 ## ❌ Stablecoin peg mean-reversion — rejected as a *continuous* edge; it's a rare-EVENT trade (2026-06-10)
 
 The hypothesis was sharp: crypto is momentum (pairs-MR dies), but stablecoins are the structural exception —

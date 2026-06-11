@@ -148,6 +148,7 @@
     "backtest:xsection-carry": "tsx scripts/backtest-xsection-funding-carry.ts",
     "backtest:carry-regime": "tsx scripts/backtest-carry-regime.ts",
     "backtest:cross-edge": "tsx scripts/backtest-cross-edge.ts",
+    "backtest:stable-mr": "tsx scripts/backtest-stable-mr.ts",
     "carry:paper-snapshot": "tsx scripts/carry-paper-snapshot.ts",
     "carry:paper-cron": "zsh scripts/cron-carry-paper.sh",
     "carry:now": "tsx scripts/carry-now.ts",
@@ -167,7 +168,12 @@
     "hl:walk-forward": "tsx scripts/hl-walk-forward.ts",
     "hl:forward-cron": "zsh scripts/cron-wallet-forward.sh",
     "bench:loops": "tsx scripts/_loop-design-bench.ts",
-    "bench:fingerprint": "tsx scripts/_hl-fingerprint-loop-bench.ts"
+    "bench:fingerprint": "tsx scripts/_hl-fingerprint-loop-bench.ts",
+    "liq:build-klines": "tsx scripts/build-cascade-klines-passport.ts",
+    "liq:write-events": "tsx scripts/liquidation-event-writer.ts",
+    "liq:backtest": "tsx scripts/backtest-liq-cascade.ts",
+    "liq:monitor": "tsx scripts/monitor-liq-cascade.ts",
+    "liq:monitor:live": "tsx scripts/monitor-liq-cascade.ts -- --live"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

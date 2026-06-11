@@ -183,9 +183,16 @@ barriers** ("will BTC *reach*/*dip to* $K in June") — those need barrier-optio
 maker only at "above/below $K on [date]" and Up/Down (strike = candle open) markets.
 
 ### Next on this lane (unchanged gates, now concrete)
-- **G2 forward track**: get real-time trades (proxied CLOB WS or trading-box IP), run the paper
-  maker ≥2 weeks across BTC/ETH hourly + daily digitals; the edge is real only if paper PnL
-  (marked to market, after the optimistic-fill haircut) holds positive.
+- **G2 forward track** — ✅ RUNNING as of 2026-06-10 23:28 ET. `maker:paper:daemon`
+  (`scripts/maker-paper-daemon.ts`) rolls the paper maker market-to-market unattended:
+  Gamma-discovers the soonest BTC Up/Down market (hourly AND the 15-minute series, which is
+  BACK as of 2026-06-10 — gamma shows live "11:15PM-11:30PM ET" markets — and is the
+  highest-delta venue available), derives the strike from the Binance candle open, runs
+  `binary-maker-paper` until expiry, repeats. launchd KeepAlive job
+  `com.isaiahdupree.hft.makerpaper` (logs: /tmp/hft-makerpaper.log). Judge with
+  `maker:paper:report` — per-session paper PnL + the baseline-vs-enhanced Brier A/B against
+  the approximate realized outcome (knife-edge sessions excluded, optimistic-fill caveat
+  stands). The ≥2-week clock starts now; still wanted: proxied CLOB trade WS for fill realism.
 - **Improve the fair value** — ✅ BUILT 2026-06-10 (same day, second pass). A maker with a fair
   value no better than the mid has no edge — this was the make-or-break. Two opt-in upgrades in
   `binary-fair-value.ts`, both default-OFF (baseline bit-identical), 34 unit tests, suite green:

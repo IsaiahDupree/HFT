@@ -27,9 +27,11 @@ const pct = (n: number) => `${n >= 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
 const REG: Record<RegimeLabel, string> = { up: "📈 up  ", down: "📉 down", flat: "➖ flat" };
 
 const override = str("--wallets");
-const candidates: string[] = override
-  ? override.split(",").map((s) => s.trim().toLowerCase())
-  : (() => { const ws = openWalletDb(); const c = ws.latest().filter((s) => s.copyMode === "position-copy" && s.verified && !s.flowDistorted).map((s) => s.address); ws.close(); return c; })();
+type Cand = { address: string; directionality: string };
+const candObjs: Cand[] = override
+  ? override.split(",").map((s) => ({ address: s.trim().toLowerCase(), directionality: "override" }))
+  : (() => { const ws = openWalletDb(); const c = ws.latest().filter((s) => s.copyMode === "position-copy" && s.verified && !s.flowDistorted).map((s) => ({ address: s.address, directionality: s.directionality || "two-sided" })); ws.close(); return c; })();
+const candidates = candObjs.map((c) => c.address);
 
 if (!candidates.length) { console.log("\nhl-walk-forward — no verified position-copy candidates. Run `npm run hl:wallet-track` first.\n"); }
 else {
@@ -68,48 +70,75 @@ else {
     } catch { /* skip */ }
   }
 
-  // basket net-book weights per grid day
-  const basketWeights: Array<Record<string, number>> = grid.map((t, gi) => {
-    const acc: Record<string, number> = {}; let nW = 0;
-    for (const [, perCoin] of series) {
-      const book: NetPosition[] = [];
-      for (const [c, s] of perCoin) { const px = closes.get(c)?.[gi] ?? 0; if (px > 0) book.push({ coin: c, notionalUsd: positionAt(s, t) * px }); }
-      const wts = netBookWeights(book);
-      if (Object.keys(wts).length) { nW++; for (const c of Object.keys(wts)) acc[c] = (acc[c] ?? 0) + wts[c]; }
+  // EXOGENOUS regime series: daily BTC return per period — decouples the regime label from the (sign-aware) benchmark
+  const btcCloses = closes.get("BTC");
+  const regimeReturns: number[] = [];
+  for (let i = 0; i < grid.length - 1; i++) { const a = btcCloses?.[i] ?? 0, b = btcCloses?.[i + 1] ?? 0; regimeReturns.push(a > 0 && b > 0 ? (b - a) / a : 0); }
+
+  // build the copy-vs-(sign-matched)-beta streams for ANY wallet subset, reusing the shared reconstruction
+  function buildReturns(subset: readonly string[]): { copy: number[]; bench: number[] } {
+    const sub = new Set(subset);
+    const bw: Array<Record<string, number>> = grid.map((t, gi) => {
+      const acc: Record<string, number> = {}; let nW = 0;
+      for (const [w, perCoin] of series) {
+        if (!sub.has(w)) continue;
+        const book: NetPosition[] = [];
+        for (const [c, s] of perCoin) { const px = closes.get(c)?.[gi] ?? 0; if (px > 0) book.push({ coin: c, notionalUsd: positionAt(s, t) * px }); }
+        const wts = netBookWeights(book);
+        if (Object.keys(wts).length) { nW++; for (const c of Object.keys(wts)) acc[c] = (acc[c] ?? 0) + wts[c]; }
+      }
+      if (nW) for (const c of Object.keys(acc)) acc[c] /= nW;
+      const gross = Object.values(acc).reduce((a, b) => a + Math.abs(b), 0);
+      if (gross > 0) for (const c of Object.keys(acc)) acc[c] /= gross;
+      return acc;
+    });
+    const copy: number[] = [], bench: number[] = [];
+    for (let i = 0; i < grid.length - 1; i++) {
+      const prevPx: Record<string, number> = {}, curPx: Record<string, number> = {};
+      for (const c of Object.keys(bw[i])) { const a = closes.get(c)?.[i] ?? 0, b = closes.get(c)?.[i + 1] ?? 0; if (a > 0 && b > 0) { prevPx[c] = a; curPx[c] = b; } }
+      const rets = priceReturns(prevPx, curPx);
+      copy.push((bookMtmReturn(bw[i], rets) - rebalanceCost(bw[i], bw[i + 1], COST_BPS)) * FRACTION);
+      bench.push(signMatchedReturn(bw[i], rets) * FRACTION);
     }
-    if (nW) for (const c of Object.keys(acc)) acc[c] /= nW;
-    const gross = Object.values(acc).reduce((a, b) => a + Math.abs(b), 0);
-    if (gross > 0) for (const c of Object.keys(acc)) acc[c] /= gross;
-    return acc;
-  });
-
-  // copy-vs-beta per-period return streams
-  const copyReturns: number[] = [], benchReturns: number[] = [];
-  for (let i = 0; i < grid.length - 1; i++) {
-    const prevPx: Record<string, number> = {}, curPx: Record<string, number> = {};
-    for (const c of Object.keys(basketWeights[i])) { const a = closes.get(c)?.[i] ?? 0, b = closes.get(c)?.[i + 1] ?? 0; if (a > 0 && b > 0) { prevPx[c] = a; curPx[c] = b; } }
-    const rets = priceReturns(prevPx, curPx);
-    const mtm = bookMtmReturn(basketWeights[i], rets);
-    const cost = rebalanceCost(basketWeights[i], basketWeights[i + 1], COST_BPS);
-    copyReturns.push((mtm - cost) * FRACTION);
-    benchReturns.push(signMatchedReturn(basketWeights[i], rets) * FRACTION); // sign-AWARE baseline: grants the direction, isolates sizing/selection skill
+    return { copy, bench };
   }
+  const WF = { windowSize: WINDOW, step: STEP, flatBand: FLAT, regimeReturns };
+  const run = (subset: readonly string[]) => { const { copy, bench } = buildReturns(subset); return walkForwardAnalysis(copy, bench, WF); };
+  const VERDICT: Record<string, string> = {
+    "regime-independent edge": "✅ REGIME-INDEPENDENT EDGE",
+    "regime-dependent (directional bet)": "⚠️ directional bet",
+    "no edge": "❌ no edge",
+    "insufficient": "⏳ insufficient",
+  };
 
-  const r = walkForwardAnalysis(copyReturns, benchReturns, { windowSize: WINDOW, step: STEP, flatBand: FLAT });
+  // ---- 1) AGGREGATE (detailed) ----
+  const r = run(candidates);
+  console.log(`  === AGGREGATE (${candidates.length} wallets) · regime tagged by BTC ===`);
   console.log(`  window  regime    copy      beta      ALPHA`);
   for (const w of r.windows) console.log(`    #${String(w.index).padStart(2)}   ${REG[w.regime]}  ${pct(w.copyReturn).padStart(7)}  ${pct(w.benchReturn).padStart(7)}  ${pct(w.alpha).padStart(7)}`);
-  console.log(`\n  alpha by regime:`);
-  for (const reg of ["up", "down", "flat"] as RegimeLabel[]) { const a = r.byRegime[reg]; if (a.n) console.log(`    ${REG[reg]}  n=${a.n}  mean alpha ${pct(a.meanAlpha)}  win-rate ${(a.winRate * 100).toFixed(0)}%`); }
-  console.log(`\n  ${r.nWindows} windows (effective N ${r.effectiveN.toFixed(1)} after ${(STEP < WINDOW ? Math.round((1 - STEP / WINDOW) * 100) : 0)}% overlap) · mean alpha ${pct(r.meanAlpha)} · t-stat ${r.tStat.toFixed(2)} · consistency ${(r.alphaConsistency * 100).toFixed(0)}%`);
-  console.log(`  alpha in UP regimes ${pct(r.alphaUp)} · alpha in DOWN regimes ${pct(r.alphaDown)}  (vs SIGN-MATCHED baseline — direction already granted)`);
-  const VERDICT: Record<string, string> = {
-    "regime-independent edge": "✅ REGIME-INDEPENDENT EDGE — alpha survives up AND down. Worth forward-confirming.",
-    "regime-dependent (directional bet)": "⚠️ DIRECTIONAL BET — wins in down, loses in up. It's a short, not skill.",
-    "no edge": "❌ NO EDGE — does not beat passively holding the coins.",
-    "insufficient": "⏳ INSUFFICIENT — too few windows to judge (need a longer history).",
-  };
-  console.log(`\n  VERDICT: ${VERDICT[r.verdict]}`);
-  if (!r.byRegime.up.n || !r.byRegime.down.n) console.log(`  ⚠️ coverage: only ${r.byRegime.up.n} up / ${r.byRegime.down.n} down windows — alpha untested in a missing regime.`);
-  console.log(`\n  FIXED (per adversarial review): sign-aware benchmark · standing positions seeded (no phantom shorts) · overlap-deflated power gate.`);
-  console.log(`  STILL OPEN: membership-as-of (basket = TODAY's verified set → survivorship short-tilt) and sub-basket disaggregation (--split). The aggregate may net away real sub-population edge.\n`);
+  for (const reg of ["up", "down", "flat"] as RegimeLabel[]) { const a = r.byRegime[reg]; if (a.n) console.log(`    ${REG[reg]}  n=${a.n}  mean alpha ${pct(a.meanAlpha)}  win ${(a.winRate * 100).toFixed(0)}%`); }
+  console.log(`  ${r.nWindows} windows (eff N ${r.effectiveN.toFixed(1)}) · mean alpha ${pct(r.meanAlpha)} · t ${r.tStat.toFixed(2)} · ${VERDICT[r.verdict]}`);
+
+  // ---- 2) SUB-BASKETS by directionality (disaggregation — the aggregate may net away sub-edge) ----
+  const buckets = new Map<string, string[]>();
+  for (const c of candObjs) { const arr = buckets.get(c.directionality) ?? []; arr.push(c.address); buckets.set(c.directionality, arr); }
+  console.log(`\n  === SUB-BASKETS by directionality ===`);
+  console.log(`  bucket            n   eff-N  meanAlpha  t-stat  verdict`);
+  const bucketRows = [...buckets.entries()].map(([k, addrs]) => ({ k, addrs, r: run(addrs) }));
+  for (const b of bucketRows.sort((a, z) => z.r.tStat - a.r.tStat)) console.log(`  ${b.k.padEnd(16)}  ${String(b.addrs.length).padStart(2)}  ${b.r.effectiveN.toFixed(1).padStart(5)}  ${pct(b.r.meanAlpha).padStart(8)}  ${b.r.tStat.toFixed(2).padStart(6)}  ${VERDICT[b.r.verdict]}`);
+
+  // ---- 3) PER-WALLET scan (does any single wallet carry edge the basket cancels?) ----
+  const perWallet = candidates.map((w) => ({ w, r: run([w]) })).sort((a, z) => z.r.tStat - a.r.tStat);
+  console.log(`\n  === PER-WALLET (top 8 by t-stat) ===`);
+  console.log(`  wallet        eff-N  meanAlpha  t-stat  verdict`);
+  for (const p of perWallet.slice(0, 8)) console.log(`  ${p.w.slice(0, 12)}  ${p.r.effectiveN.toFixed(1).padStart(5)}  ${pct(p.r.meanAlpha).padStart(8)}  ${p.r.tStat.toFixed(2).padStart(6)}  ${VERDICT[p.r.verdict]}`);
+
+  // ---- WINNERS: any sub-group with a real, significant, regime-independent edge ----
+  const winners = [
+    ...bucketRows.filter((b) => b.r.verdict === "regime-independent edge").map((b) => `bucket ${b.k} (n=${b.addrs.length}, alpha ${pct(b.r.meanAlpha)}, t ${b.r.tStat.toFixed(2)})`),
+    ...perWallet.filter((p) => p.r.verdict === "regime-independent edge").map((p) => `wallet ${p.w.slice(0, 12)} (alpha ${pct(p.r.meanAlpha)}, t ${p.r.tStat.toFixed(2)})`),
+  ];
+  console.log(`\n  ${winners.length ? "🎯 CANDIDATES with regime-independent edge → promote to forward paper-track:\n    " + winners.join("\n    ") : "❌ NO sub-basket or wallet shows a significant regime-independent edge. Disaggregation did not rescue a hidden edge."}`);
+  console.log(`\n  FIXED: sign-aware benchmark · seeded standing positions · overlap power-gate · BTC-tagged regimes · disaggregated.`);
+  console.log(`  STILL OPEN: membership-as-of (needs more longitudinal history; store is days old, not 90d).\n`);
 }

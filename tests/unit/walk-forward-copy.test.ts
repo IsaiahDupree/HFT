@@ -80,6 +80,15 @@ describe("walkForwardAnalysis — honest power gating (the fix the verification 
     expect(Math.abs(r.tStat)).toBeLessThan(2);         // but not significant
     expect(r.verdict).toBe("no edge");                 // ⇒ NOT an edge
   });
+  it("EXOGENOUS regime tag (BTC) decouples the label from the benchmark numerator", () => {
+    // copy/bench are flat; regime is driven by an external BTC series that is clearly up then down
+    const copy = Array(20).fill(0.001), bench = Array(20).fill(0.001);
+    const btc = [...Array(10).fill(0.03), ...Array(10).fill(-0.03)]; // first half up, second half down
+    const r = walkForwardAnalysis(copy, bench, { windowSize: 10, step: 10, minWindows: 2, minEffWindows: 2, regimeReturns: btc });
+    const regimes = r.windows.map((w) => w.regime);
+    expect(regimes[0]).toBe("up");   // tagged by BTC, not by the flat benchmark
+    expect(regimes[1]).toBe("down");
+  });
   it("effectiveN halves with 50% overlap vs full with non-overlap", () => {
     const x = Array.from({ length: 50 }, () => 0.001);
     const overlap = walkForwardAnalysis(x, x, { windowSize: 14, step: 7 });

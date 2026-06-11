@@ -55,16 +55,19 @@ const agg = (xs: number[]): RegimeAgg => ({ n: xs.length, meanAlpha: xs.length ?
  */
 export function walkForwardAnalysis(
   copyReturns: readonly number[], benchReturns: readonly number[],
-  opts: { windowSize?: number; step?: number; flatBand?: number; minWindows?: number; minEffWindows?: number; minTStat?: number } = {},
+  opts: { windowSize?: number; step?: number; flatBand?: number; minWindows?: number; minEffWindows?: number; minTStat?: number; regimeReturns?: readonly number[] } = {},
 ): WalkForwardResult {
-  const { windowSize = 14, step = 7, flatBand = 0.02, minWindows = 4, minEffWindows = 6, minTStat = 1.5 } = opts;
+  const { windowSize = 14, step = 7, flatBand = 0.02, minWindows = 4, minEffWindows = 6, minTStat = 1.5, regimeReturns } = opts;
   const idx = copyReturns.map((_, i) => i);
   const wins = rollingWindows(idx, windowSize, step);
   const windows: WindowResult[] = wins.map((w, i) => {
     const cr = w.items.map((j) => copyReturns[j]);
     const br = w.items.map((j) => benchReturns[j]);
     const copyReturn = cumReturn(cr), benchReturn = cumReturn(br);
-    return { index: i, regime: classifyRegime(benchReturn, flatBand), copyReturn, benchReturn, alpha: copyReturn - benchReturn, copySharpe: sharpe(cr), nPeriods: w.items.length };
+    // regime tagged by an EXOGENOUS market series (e.g. BTC) when provided — decouples the label from the alpha
+    // numerator (kills the circular benchReturn tag the verification flagged). Falls back to benchReturn.
+    const regimeCum = regimeReturns ? cumReturn(w.items.map((j) => regimeReturns[j] ?? 0)) : benchReturn;
+    return { index: i, regime: classifyRegime(regimeCum, flatBand), copyReturn, benchReturn, alpha: copyReturn - benchReturn, copySharpe: sharpe(cr), nPeriods: w.items.length };
   });
 
   const alphas = windows.map((w) => w.alpha);

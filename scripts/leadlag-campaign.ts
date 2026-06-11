@@ -34,6 +34,7 @@ const MOVE_BPS = Number(flag("--move-bps", "20"));
 const MAX_MARKETS = Number(flag("--max-markets", "2"));
 const HORIZON_H = Number(flag("--horizon-hours", "36"));
 const MIN_VOL24 = Number(flag("--min-vol24", "5000"));
+const MIN_CAPTURE_SEC = Number(flag("--min-capture-sec", "120"));
 const DISCOVER_ONLY = has("--discover-only");
 
 const OUT_PATH =
@@ -113,8 +114,10 @@ async function discover(): Promise<Pick_[]> {
       const endMs = Date.parse(m?.endDate ?? ev?.endDate ?? "");
       if (!Number.isFinite(endMs) || endMs <= now) continue;
       const tauMinutes = (endMs - now) / 60_000;
-      // need the market to outlive the capture window
-      if (tauMinutes * 60 < SECONDS + 60) continue;
+      // the capture window is clamped to the market's remaining life (the 5-min
+      // Up/Down series — the highest-delta venue — never has 300s+ remaining),
+      // but a market must offer at least MIN_CAPTURE_SEC to be worth measuring.
+      if (tauMinutes * 60 < MIN_CAPTURE_SEC + 30) continue;
 
       picks.push({
         question: q, symbol: sym, tokenId,
@@ -185,12 +188,14 @@ function ensureDir(p: string): string {
 }
 
 for (const p of picks) {
-  console.log(`\n── measuring ${p.symbol} (${SECONDS}s, ≥${MOVE_BPS}bps) ──`);
+  // clamp the capture to what's left of the market (5-min series: ~2-4 min)
+  const capSec = Math.max(MIN_CAPTURE_SEC, Math.min(SECONDS, Math.floor(p.tauMinutes * 60) - 30));
+  console.log(`\n── measuring ${p.symbol} (${capSec}s, ≥${MOVE_BPS}bps) ──`);
   const r = spawnSync(
     "npx",
     ["tsx", "scripts/binance-poly-leadlag.ts", "--token", p.tokenId, "--symbol", p.symbol,
-      "--seconds", String(SECONDS), "--move-bps", String(MOVE_BPS)],
-    { cwd: process.cwd(), encoding: "utf8", timeout: (SECONDS + 120) * 1000 },
+      "--seconds", String(capSec), "--move-bps", String(MOVE_BPS)],
+    { cwd: process.cwd(), encoding: "utf8", timeout: (capSec + 120) * 1000 },
   );
   const out = `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
   console.log(out.trim().split("\n").slice(-8).join("\n"));

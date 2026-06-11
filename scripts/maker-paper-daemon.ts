@@ -93,22 +93,27 @@ async function discover(): Promise<Target | null> {
   return null;
 }
 
-/** STRIKE for an Up/Down market = the candle's open = the 1m kline open at startMs. */
+/** STRIKE for an Up/Down market = the candle's open = the 1m kline open at startMs.
+ *  Tries the proxied main API first (the proxy intermittently answers "Not
+ *  authenticated" and skipped markets all afternoon), then falls back to the
+ *  keyless public mirror data-api.binance.vision (same /api/v3/klines shape). */
 async function candleOpen(startMs: number): Promise<number | null> {
-  try {
-    const r = await proxiedFetch(
-      `https://api.binance.com/api/v3/klines?symbol=${SYMBOL}USDT&interval=1m&startTime=${startMs}&limit=1`,
-      { signal: AbortSignal.timeout(15_000) },
-    );
-    const k = (await r.json()) as any[];
-    const open = Number(k?.[0]?.[1]);
-    // sanity: the returned kline must actually be the candle-start minute
-    if (Number(k?.[0]?.[0]) !== startMs || !(open > 0)) return null;
-    return open;
-  } catch (e) {
-    log(`kline open failed: ${(e as Error).message.slice(0, 100)}`);
-    return null;
+  const path = `/api/v3/klines?symbol=${SYMBOL}USDT&interval=1m&startTime=${startMs}&limit=1`;
+  for (const [name, fetchFn, host] of [
+    ["proxied", proxiedFetch, "https://api.binance.com"],
+    ["mirror", fetch, "https://data-api.binance.vision"],
+  ] as const) {
+    try {
+      const r = await fetchFn(`${host}${path}`, { signal: AbortSignal.timeout(15_000) });
+      const k = (await r.json()) as any[];
+      const open = Number(k?.[0]?.[1]);
+      // sanity: the returned kline must actually be the candle-start minute
+      if (Number(k?.[0]?.[0]) === startMs && open > 0) return open;
+    } catch (e) {
+      log(`kline open via ${name} failed: ${(e as Error).message.slice(0, 80)}`);
+    }
   }
+  return null;
 }
 
 function runPaper(t: Target, strike: number): Promise<number> {

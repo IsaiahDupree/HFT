@@ -283,6 +283,84 @@ delisted and USDPUSDT failed to fetch, so only the calm-regime — and clearly-n
 
 ---
 
+## The Polymarket program — prediction-market lanes (2026-06-10 → 11)
+
+A parallel edge program on Polymarket crypto binaries, run with the same gauntlet discipline.
+Trigger: the viral "$1M bot" article (audited honestly in `docs/POLYMARKET-STACK-AUDIT.md`).
+Two wallet sweeps (148 wallets profiled), lag-aware copy backtests, a 24/7 paper-maker forward
+track, and an hourly lag-measurement cron produced the verdicts below. The 5-MIN Up/Down series
+(7 assets, a market every 5 minutes) relaunched ~2026-06-10 and is the central venue.
+
+### ✅ (strongest) Merge-maker + rebates — "be coinman2, don't copy him"
+**Status: PAPER, forward-accruing (TradingBot2 Lane A) — the lane with the most independent
+confirmation.** Buy BOTH Yes and No below a combined $1.00, merge complete sets back to $1 USDC,
+collect maker rebates; inventory risk nets out at the pair level.
+- **Existence proofs (on-chain, verified):** coinman2 **+$1.09M/558d** (maker/merge fingerprint,
+  ~1.4% of volume); 0x6db568e6 **+$1.58M, 7.2% margin** (merge-maker hybrid, 54d); Bonereaper
+  **+$999k/77d, 0.69% margin, maxDD only −$8.7k**.
+- **Calibration fingerprint of the profitable cohort** (round-2 sweep): $1–14 median fills, quote
+  the FULL 0.02→0.99 lifecycle, ~3s requote; the −$1.29M dead maker ran 4× clips at 13s requote.
+- **Our forward paper** (TradingBot2 `merge_maker.py`): first 4 finalized windows 73.7% pair
+  completion, income decomposition **maker-driven** (+$24.10 maker vs +$3.50 residual) — tiny n,
+  let it accrue. Independent prior: evan-kolberg's forward-validated `passive_pair_accumulation`.
+- **Falsifier to watch:** pair-completion rate collapsing (unpaired inventory = naked directional).
+
+### 🟡 Binary fair-value naked maker (G2 forward track) — honest readout: LOSING so far
+**Status: PAPER, currently NEGATIVE — do not promote.** Single-token two-sided quoting off a CEX
+fair value (`maker:paper:daemon`, 24/7 across the 5-min/15-min/hourly series).
+- **First ~18h clean data (183 sessions, 1,650 fills):** **−$2,066 paper** (and fills are
+  OPTIMISTIC front-of-queue), rebates only $118. Naked inventory rides directional moves into
+  resolution — adverse selection dwarfs spread+rebates.
+- **Model A/B/market (13,566 scored ticks): MARKET MID 0.1063 beats baseline 0.1068 beats
+  enhanced 0.1105.** The market's own mid is a better forecaster than our fair value — the fair
+  carries NO information beyond the book (baseline nearly ties; enhanced is clearly worse). A
+  maker quoting off a worse fair than the mid is *supplying* edge. This is the formal demotion
+  of the naked-FV thesis, delivered by its own pre-registered benchmark.
+- **Verdict (2026-06-11): the lane's edge is in PAIRED quoting (merge lane), not a better fair
+  value.** Consistent with every profitable wallet examined (all pair/merge; none holds naked
+  inventory). G2 keeps running as infrastructure + a data feed for G3, but promotion of naked
+  quoting is dead unless a future fair value *beats the mid's Brier* — that bar is now explicit
+  in `maker:paper:report`.
+
+### ❌ Taker latency-snipe on 5-min binaries — lane empty, claim dead
+The article's "2.7s lag" is gone in June 2026: across **39 cron measurements** (BTC+ETH, all
+three series), median Binance→Polymarket xcorr lag is **0.5s**; in the only ≥20bps impulse event
+captured so far the book repriced in 13.4s with **zero** stale-quote no-reprices ≥30s. Wallet
+forensics agree: **0 profitable takers among 3,189 wallets** touching 5-min binaries (33k fills).
+Two brand-new public 5-min bots appeared within 48h of the series relaunch — competition is
+arriving, not leaving. The G1 cron keeps counting; promotion would need a daily recurring
+(impulse × stale × spread>fees) triple that simply hasn't appeared.
+
+### 🟡 LP rewards lane (Polymarket liquidity rewards)
+**Status: PAPER (TradingBot2).** Honest Jun 5–10 ledger after the inventory-accounting fix:
+reward **+$630** + inventory **+$119** = **+$749 ≈ $134/day on $200 paper stake** — but
+170/191 pools were zero-fill and the inventory term carries ±$400 heavy-tail variance. Real
+income, concentration risk; judge after weeks, size for the tail.
+
+### 🟡 Copy-trading — one survivor out of 148 wallets
+The two-gate machinery (copyable mechanics AND verified realized edge) plus lag-aware
+backtests (1-min CLOB history, +1¢ spread cost, no lookahead) demoted nearly everything:
+- ✅ **0x418d51e1: COPYABLE at ≤300s** — copy +13.5% vs leader +14.8% (n=103, retains 91%);
+  alpha is *side selection*, not timing — which is exactly why it survives delay. Forward
+  shadow (2 weeks) before any sizing; `observe:wallet` needs latency/spread/clip recording first.
+- 🟡 alwaysfade: +10.1% @60s but only on ≥$1k clips and n=19 — shadow only.
+- ❌ ethanaz (+$2.46M leader): copy **−2.6%** @60s on the same 944 bets — his post-fill drift IS
+  the alpha; the copier pays it. The pre-registered falsifier fired; demoted.
+- ❌ Naive copy-trading at large: forward-falsified twice (21-daemon walk + these backtests).
+
+### ❌ Near-cert 95–99¢ grinding — debunked as structural
+Long-span lane grinders are net LOSERS (richerZ −$94k/514d; the only profitable pure grinder is
+32 days old). The lane's wins are selection-driven, not structural — do NOT scale it on
+structure alone. (Flagged for reconciliation against TradingBot2's PARTIAL near-cert verdict.)
+
+### Evidence trail
+`docs/POLYMARKET-STACK-AUDIT.md` (audit + gates + measurements log) · `docs/wallets/SWEEP-2026-06-10.md`
++ `SWEEP-2026-06-11-ROUND2.md` (148 wallets) · `docs/wallets/COPY-BACKTEST-2026-06-11.md` ·
+`docs/research/EVAN-KOLBERG-BACKTESTER-ASSESS.md` (G3 data: PMXT free L2 archive) ·
+`maker:paper:report` (live A/B) · `leadlag-campaign.jsonl` (passport).
+
+---
+
 ## Methodology notes worth remembering
 
 - **Beta benchmark is mandatory.** "It made 126×" means nothing until you compare to holding the

@@ -41,7 +41,9 @@ const sessions = db.prepare("SELECT * FROM bm_sessions ORDER BY started_iso").al
 
 const KNIFE_EDGE_BPS = 5;
 let totPnlMkt = 0, totFills = 0, totRebates = 0, nSessions = 0;
-const brier = { base: [] as number[], enh: [] as number[] };
+// The market mid is scored as a THIRD forecaster — the make-or-break benchmark:
+// a maker whose fair value doesn't beat the mid has no edge over the market.
+const brier = { base: [] as number[], enh: [] as number[], mkt: [] as number[] };
 let knifeEdgeSkipped = 0;
 
 console.log(`maker-paper-report — ${DB_PATH}${DAYS ? ` (last ${DAYS}d)` : ""}\n`);
@@ -49,8 +51,11 @@ for (const s of sessions) {
   if (since && Date.parse(s.started_iso) < since) continue;
   const sum = s.summary ? JSON.parse(s.summary) : null;
   const snaps = db.prepare(
-    "SELECT ts, spot, p_fair_base, p_fair_enh FROM bm_snaps WHERE session = ? ORDER BY ts",
-  ).all(s.session) as { ts: number; spot: number; p_fair_base: number | null; p_fair_enh: number | null }[];
+    "SELECT ts, spot, p_fair_base, p_fair_enh, mkt_bid, mkt_ask FROM bm_snaps WHERE session = ? ORDER BY ts",
+  ).all(s.session) as {
+    ts: number; spot: number; p_fair_base: number | null; p_fair_enh: number | null;
+    mkt_bid: number | null; mkt_ask: number | null;
+  }[];
   if (!snaps.length) continue;
   nSessions++;
 
@@ -69,8 +74,15 @@ for (const s of sessions) {
       const y = last.spot > s.strike ? 1 : 0;
       outcomeStr = y ? "ABOVE" : "below";
       for (const sn of snaps) {
-        if (Number.isFinite(sn.p_fair_base as number)) brier.base.push(((sn.p_fair_base as number) - y) ** 2);
-        if (Number.isFinite(sn.p_fair_enh as number)) brier.enh.push(((sn.p_fair_enh as number) - y) ** 2);
+        // score the mid ONLY on ticks where both models scored, so the three
+        // Brier columns are computed over the identical tick set
+        if (!Number.isFinite(sn.p_fair_base as number) || !Number.isFinite(sn.p_fair_enh as number)) continue;
+        const mid = Number.isFinite(sn.mkt_bid as number) && Number.isFinite(sn.mkt_ask as number)
+          ? ((sn.mkt_bid as number) + (sn.mkt_ask as number)) / 2 : NaN;
+        if (!Number.isFinite(mid)) continue;
+        brier.base.push(((sn.p_fair_base as number) - y) ** 2);
+        brier.enh.push(((sn.p_fair_enh as number) - y) ** 2);
+        brier.mkt.push((mid - y) ** 2);
       }
     }
   } else if (expired) {
@@ -90,11 +102,17 @@ for (const s of sessions) {
 const mean = (a: number[]) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : NaN);
 console.log(`\n── aggregate (${nSessions} sessions) ──`);
 console.log(`  paper PnL (marked to market, OPTIMISTIC): $${totPnlMkt.toFixed(2)}  fills ${totFills}  rebates $${totRebates.toFixed(2)}`);
-console.log(`  model A/B (Brier, lower better, ${brier.base.length} scored ticks, ${knifeEdgeSkipped} knife-edge sessions excluded):`);
-console.log(`    baseline ${mean(brier.base).toFixed(4)}   enhanced ${mean(brier.enh).toFixed(4)}`);
+console.log(`  model A/B/market (Brier, lower better, ${brier.base.length} scored ticks, ${knifeEdgeSkipped} knife-edge sessions excluded):`);
+console.log(`    baseline ${mean(brier.base).toFixed(4)}   enhanced ${mean(brier.enh).toFixed(4)}   MARKET MID ${mean(brier.mkt).toFixed(4)}`);
 if (brier.base.length >= 500) {
+  const bestModel = Math.min(mean(brier.base), mean(brier.enh));
   const better = mean(brier.enh) < mean(brier.base) ? "ENHANCED" : "BASELINE";
-  console.log(`    → ${better} is winning the forward A/B so far (ticks are autocorrelated — judge across many sessions, not one).`);
+  console.log(`    → ${better} is winning the model A/B (ticks are autocorrelated — judge across many sessions, not one).`);
+  if (mean(brier.mkt) < bestModel) {
+    console.log(`    → ⚠ the MARKET MID beats both models — the fair value has NO edge over the market as scored. A maker quoting off a worse fair than the mid is supplying edge, not capturing it.`);
+  } else {
+    console.log(`    → our best model beats the market mid — the fair value carries real information beyond the book.`);
+  }
 } else {
   console.log(`    → too few scored ticks to call; let the daemon run.`);
 }

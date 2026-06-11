@@ -150,6 +150,7 @@
     "backtest:cross-edge": "tsx scripts/backtest-cross-edge.ts",
     "backtest:stable-mr": "tsx scripts/backtest-stable-mr.ts",
     "vol:surface": "tsx scripts/vol-surface-scan.ts",
+    "backtest:hl-delta": "tsx scripts/backtest-hl-delta.ts",
     "carry:paper-snapshot": "tsx scripts/carry-paper-snapshot.ts",
     "carry:paper-cron": "zsh scripts/cron-carry-paper.sh",
     "carry:now": "tsx scripts/carry-now.ts",
@@ -174,7 +175,9 @@
     "liq:write-events": "tsx scripts/liquidation-event-writer.ts",
     "liq:backtest": "tsx scripts/backtest-liq-cascade.ts",
     "liq:monitor": "tsx scripts/monitor-liq-cascade.ts",
-    "liq:monitor:live": "tsx scripts/monitor-liq-cascade.ts -- --live"
+    "liq:monitor:live": "tsx scripts/monitor-liq-cascade.ts -- --live",
+    "poly:leadlag": "tsx scripts/binance-poly-leadlag.ts",
+    "maker:paper": "tsx scripts/binary-maker-paper.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

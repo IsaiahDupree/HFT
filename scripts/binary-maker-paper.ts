@@ -71,6 +71,14 @@ const FEE_CAT = (flag("--fee-category", "crypto") as FeeCategory);
 const FV_MODEL = flag("--fv", "enhanced") as "enhanced" | "baseline";
 // Market question (recorded in bm_sessions for forensics — which series, which candle).
 const QUESTION = flag("--question");
+// Market duration in minutes (daemon passes it). Estimator windows scale with
+// the instrument's horizon: a 5-min binary needs ~5-min momentum/vol windows,
+// not the hour-scale defaults tuned for daily digitals (the adverse-selection
+// lesson from the first clean 5-min sessions: the market priced short-horizon
+// momentum our 60-min-half-life EWMA couldn't see).
+const DURATION_MIN = Number(flag("--duration-min", "0"));
+const VOL_BARS = DURATION_MIN > 0 ? Math.max(10, Math.min(60, Math.round(DURATION_MIN))) : 30;
+const MOM_HALF_LIFE = DURATION_MIN > 0 ? Math.max(5, Math.min(60, Math.round(DURATION_MIN))) : 60;
 // Strike sanity self-check: if the median |fair − market mid| over the first
 // SANITY_TICKS priced ticks exceeds this (in cents, 0 = off), the strike is
 // almost certainly derived from the wrong candle / wrong reference — abort
@@ -272,8 +280,11 @@ while (running) {
   // Compute BOTH models every tick: the snapshots are a forward A/B of
   // baseline (zero-drift, √t) vs enhanced (shrunken-EWMA momentum + VR horizon
   // vol). FV_MODEL picks which one quotes.
-  const fvBase = fairValueFromMinuteCloses({ spot, strike: STRIKE, nowMs: now, expiryMs, minuteCloses, volBars: 30 });
-  const fvEnh = fairValueFromMinuteCloses({ spot, strike: STRIKE, nowMs: now, expiryMs, minuteCloses, volBars: 30, momentum: true, horizonVol: true });
+  const fvBase = fairValueFromMinuteCloses({ spot, strike: STRIKE, nowMs: now, expiryMs, minuteCloses, volBars: VOL_BARS });
+  const fvEnh = fairValueFromMinuteCloses({
+    spot, strike: STRIKE, nowMs: now, expiryMs, minuteCloses, volBars: VOL_BARS,
+    momentum: { halfLifeBars: MOM_HALF_LIFE }, horizonVol: true,
+  });
   const fv = FV_MODEL === "enhanced" ? (fvEnh ?? fvBase) : (fvBase ?? fvEnh);
   const mkt = await fetchBook();
   if (!fv || !mkt) { await sleep(TICK_MS); continue; }
@@ -351,7 +362,7 @@ while (running) {
 try { bn.close(); } catch { /* */ }
 const lastBook = await fetchBook();
 const markMid = lastBook ? (lastBook.bid + lastBook.ask) / 2 : 0.5;
-const finalFv = fairValueFromMinuteCloses({ spot, strike: STRIKE, nowMs: Date.now(), expiryMs, minuteCloses, volBars: 30 });
+const finalFv = fairValueFromMinuteCloses({ spot, strike: STRIKE, nowMs: Date.now(), expiryMs, minuteCloses, volBars: VOL_BARS });
 const summary = {
   session: SESSION,
   cycles: cycle,

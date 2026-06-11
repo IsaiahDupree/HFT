@@ -120,7 +120,8 @@ function runPaper(t: Target, strike: number): Promise<number> {
       ["tsx", "scripts/binary-maker-paper.ts", "--token", t.tokenId, "--symbol", SYMBOL,
         "--strike", String(strike), "--expiry-iso", new Date(t.endMs).toISOString(),
         "--seconds", String(seconds), "--tick-ms", TICK_MS, "--fv", "enhanced",
-        "--question", t.question, "--abort-divergence", "35"],
+        "--question", t.question, "--abort-divergence", "35",
+        "--duration-min", String(Math.round((t.endMs - t.startMs) / 60e3))],
       { cwd: process.cwd(), stdio: "inherit" },
     );
     const killer = setTimeout(() => { try { child.kill("SIGTERM"); } catch { /* */ } }, (seconds + 90) * 1000);

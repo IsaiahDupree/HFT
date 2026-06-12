@@ -230,6 +230,35 @@ async function patchSdkNestedAxiosAsync(interceptor: (config: any) => any): Prom
  * and falls back to native fetch otherwise. Axios is already imported above
  * for the interceptor, so this reuses the same singleton.
  */
+/** A proxy bandwidth-quota response (Webshare returns 402 when the plan's GB are spent). */
+export function isProxyQuotaStatus(status: number): boolean {
+  return status === 402;
+}
+
+/** Track quota-exhaustion so the operator surface (and logs) can see it without parsing bodies. */
+let _lastQuotaExhaustedAt: number | null = null;
+export function proxyQuotaState(): { exhausted: boolean; lastSeenMsAgo: number | null } {
+  return {
+    exhausted: _lastQuotaExhaustedAt != null && Date.now() - _lastQuotaExhaustedAt < 5 * 60_000,
+    lastSeenMsAgo: _lastQuotaExhaustedAt == null ? null : Date.now() - _lastQuotaExhaustedAt,
+  };
+}
+
+const PROXY_MAX_ATTEMPTS = Number(process.env.POLYMARKET_PROXY_MAX_ATTEMPTS ?? "3");
+const PROXY_TIMEOUT_MS = Number(process.env.POLYMARKET_PROXY_TIMEOUT_MS ?? "30000");
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Fetch a Polymarket endpoint through the configured proxy, with resilience the raw
+ * passthrough lacked:
+ *   - NETWORK failures (timeout/DNS/proxy-down) retry with exponential backoff (1s, 3s, 9s)
+ *     instead of throwing on the first blip — a momentary proxy hiccup no longer kills a daemon loop.
+ *   - TRANSIENT server statuses (429/502/503/504) retry the same way.
+ *   - 402 (proxy BANDWIDTH QUOTA exhausted) is surfaced LOUDLY to stderr and recorded in
+ *     proxyQuotaState() — retrying the same exhausted proxy won't help, so we return it fast
+ *     for the caller to handle, but it can never again hide as a silent "cycle error".
+ * Non-Polymarket URLs and the no-proxy case fall straight through to native fetch (unchanged).
+ */
 export async function polyFetch(input: string | URL, init?: RequestInit): Promise<Response> {
   const url = typeof input === "string" ? input : input.toString();
   const proxyUrl = process.env.POLYMARKET_PROXY_URL;
@@ -253,28 +282,59 @@ export async function polyFetch(input: string | URL, init?: RequestInit): Promis
       Object.assign(headers, init.headers);
     }
   }
-  try {
-    const axResp = await axios.request({
-      url, method, headers, data: body,
-      httpsAgent: agent, httpAgent: agent, proxy: false,
-      // Resolve all status codes — let the caller decide what to do with 4xx/5xx.
-      validateStatus: () => true,
-      // Return as text — we wrap it into a Response below.
-      responseType: "text",
-      timeout: init?.signal && "reason" in init.signal ? undefined : 30_000,
-    });
-    return new Response(typeof axResp.data === "string" ? axResp.data : JSON.stringify(axResp.data), {
+
+  const toResponse = (axResp: any): Response =>
+    new Response(typeof axResp.data === "string" ? axResp.data : JSON.stringify(axResp.data), {
       status: axResp.status,
       statusText: axResp.statusText,
       headers: Object.fromEntries(
         Object.entries(axResp.headers ?? {}).map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : String(v)]),
       ),
     });
-  } catch (e: any) {
-    // Network-level failure (timeout, DNS, etc.) — let it propagate as a real Error
-    // so callers handle it like a normal fetch reject.
-    throw new Error(`polyFetch failed: ${e.message}`);
+
+  const isTransientStatus = (s: number) => s === 429 || s === 502 || s === 503 || s === 504;
+  let lastErr: Error | null = null;
+
+  for (let attempt = 1; attempt <= Math.max(1, PROXY_MAX_ATTEMPTS); attempt++) {
+    try {
+      const axResp = await axios.request({
+        url, method, headers, data: body,
+        httpsAgent: agent, httpAgent: agent, proxy: false,
+        validateStatus: () => true,           // let us inspect 4xx/5xx instead of throwing
+        responseType: "text",
+        timeout: init?.signal && "reason" in init.signal ? undefined : PROXY_TIMEOUT_MS,
+      });
+
+      if (isProxyQuotaStatus(axResp.status)) {
+        _lastQuotaExhaustedAt = Date.now();
+        console.error(
+          `🚨 [poly-proxy] BANDWIDTH QUOTA EXHAUSTED (HTTP 402) on ${new URL(url).host} — ` +
+          `the Webshare plan is out of GB. CLOB calls will fail until you top up at ` +
+          `dashboard.webshare.io or rotate POLYMARKET_PROXY_URL in .env.local. Returning 402 to caller.`,
+        );
+        return toResponse(axResp);            // retrying the exhausted proxy is pointless
+      }
+
+      if (isTransientStatus(axResp.status) && attempt < PROXY_MAX_ATTEMPTS) {
+        const delay = 1000 * Math.pow(3, attempt - 1);
+        console.warn(`[poly-proxy] ${axResp.status} on ${new URL(url).host} — retry ${attempt}/${PROXY_MAX_ATTEMPTS - 1} in ${delay}ms`);
+        await sleep(delay);
+        continue;
+      }
+
+      return toResponse(axResp);
+    } catch (e: any) {
+      // Network-level failure (timeout, DNS, proxy unreachable) — retry with backoff.
+      lastErr = new Error(`polyFetch failed: ${e.message}`);
+      if (attempt < PROXY_MAX_ATTEMPTS) {
+        const delay = 1000 * Math.pow(3, attempt - 1);
+        console.warn(`[poly-proxy] network error on ${new URL(url).host} (${e.message}) — retry ${attempt}/${PROXY_MAX_ATTEMPTS - 1} in ${delay}ms`);
+        await sleep(delay);
+        continue;
+      }
+    }
   }
+  throw lastErr ?? new Error("polyFetch failed: exhausted retries");
 }
 
 /** Returns a short status string for the operator surface. */

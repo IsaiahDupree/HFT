@@ -11,17 +11,18 @@ import { createRequire } from "node:module";
 const require_ = createRequire(import.meta.url);
 const { HttpsProxyAgent } = require_("https-proxy-agent");
 
+// Updated 2026-06-11: rotated from expired plan 13575885 batch (64.137.96.74:6641 retired)
 const proxies = [
-  { country: "US", host: "38.154.203.95",  port: 5863 },
-  { country: "GB", host: "198.105.121.200", port: 6462 },
-  { country: "ES", host: "64.137.96.74",   port: 6641 },
-  { country: "US", host: "209.127.138.10", port: 5784 },
-  { country: "US", host: "38.154.185.97",  port: 6370 },
-  { country: "PL", host: "84.247.60.125",  port: 6095 },
-  { country: "US", host: "142.111.67.146", port: 5611 },
-  { country: "JP", host: "191.96.254.138", port: 6185 },
-  { country: "DE", host: "31.58.9.4",      port: 6077 },
-  { country: "DE", host: "64.137.10.153",  port: 5803 },
+  { country: "US", host: "198.37.116.209", port: 6168 }, // active — plan 13575885 new batch
+  { country: "US", host: "198.37.118.175", port: 5634 },
+  { country: "US", host: "154.6.127.194",  port: 5665 },
+  { country: "US", host: "38.154.224.6",   port: 6547 },
+  { country: "US", host: "64.137.42.225",  port: 5270 },
+  { country: "GB", host: "82.26.238.223",  port: 6530 },
+  { country: "GB", host: "92.112.136.228", port: 6172 },
+  { country: "US", host: "104.252.107.112",port: 6032 },
+  { country: "US", host: "45.39.13.6",     port: 5443 },
+  { country: "US", host: "104.143.245.223",port: 6463 },
 ];
 // Reads proxy auth from POLYMARKET_PROXY_URL (which is gitignored in
 // .env.local). Run via `npx tsx scripts/probe-poly-via-proxies.ts`.

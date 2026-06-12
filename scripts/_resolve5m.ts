@@ -19,13 +19,14 @@ const step = 300;
   const asks = (book.asks || []).map((a: any) => [+a.price, +a.size]).sort((x: any, y: any) => x[0] - y[0]);
   const bids = (book.bids || []).map((b: any) => [+b.price, +b.size]).sort((x: any, y: any) => y[0] - x[0]);
 
-  // funder USDC.e cash balance (Polygon RPC, direct — polygon-rpc.com is in NO_PROXY)
+  // funder USDC.e cash balance (Polygon RPC, direct — 1rpc.io is in NO_PROXY;
+  // polygon-rpc.com went key-gated 2026-06, 1rpc.io/matic is open)
   const funder = process.env.POLYMARKET_FUNDER_ADDRESS!;
   const USDCe = "0x2791bca1f2de4661ed88a30c99a7a9449aa84174";
   const data = "0x70a08231" + "000000000000000000000000" + funder.slice(2).toLowerCase();
   let usdc = "?";
   try {
-    const r: any = await (await fetch("https://polygon-rpc.com", {
+    const r: any = await (await fetch("https://1rpc.io/matic", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: USDCe, data }, "latest"] }),
     })).json();

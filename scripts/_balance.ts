@@ -12,7 +12,8 @@ const TOKENS: Record<string, string> = {
   for (const [name, addr] of Object.entries(TOKENS)) {
     const data = "0x70a08231" + "0".repeat(24) + f.slice(2);
     try {
-      const res: any = await (await fetch("https://polygon-rpc.com", {
+      // polygon-rpc.com went key-gated 2026-06; 1rpc.io/matic is open
+      const res: any = await (await fetch("https://1rpc.io/matic", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: addr, data }, "latest"] }),
       })).json();

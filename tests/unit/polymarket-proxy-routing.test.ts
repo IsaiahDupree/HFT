@@ -94,6 +94,60 @@ describe("proxy-routing — polyFetch passthrough behavior", () => {
   });
 });
 
+describe("proxy-routing — quota detection helpers", () => {
+  it("isProxyQuotaStatus flags 402 and nothing else", async () => {
+    const { isProxyQuotaStatus } = await import("@/lib/polymarket/proxy-routing");
+    expect(isProxyQuotaStatus(402)).toBe(true);
+    for (const s of [200, 400, 401, 403, 429, 500, 502, 503]) expect(isProxyQuotaStatus(s)).toBe(false);
+  });
+
+  it("proxyQuotaState starts un-exhausted on a fresh module", async () => {
+    const { proxyQuotaState } = await import("@/lib/polymarket/proxy-routing");
+    const st = proxyQuotaState();
+    expect(st.exhausted).toBe(false);
+    expect(st.lastSeenMsAgo).toBeNull();
+  });
+});
+
+describe("proxy-routing — polyFetch retry + 402 resilience", () => {
+  it("retries on a network error then succeeds (proxy blip no longer kills the loop)", async () => {
+    process.env.POLYMARKET_PROXY_URL = "http://u:p@1.2.3.4:9999";
+    process.env.POLYMARKET_PROXY_MAX_ATTEMPTS = "3";
+    const request = vi.fn()
+      .mockRejectedValueOnce(new Error("ETIMEDOUT"))
+      .mockResolvedValueOnce({ status: 200, statusText: "OK", data: "{\"ok\":true}", headers: {} });
+    vi.doMock("axios", () => ({ default: { request, interceptors: { request: { use: vi.fn() } } } }));
+    const { polyFetch } = await import("@/lib/polymarket/proxy-routing");
+    const r = await polyFetch("https://clob.polymarket.com/markets");
+    expect(r.status).toBe(200);
+    expect(request).toHaveBeenCalledTimes(2);
+    vi.doUnmock("axios");
+  }, 15_000);
+
+  it("surfaces a 402 quota response without retrying the exhausted proxy + records state", async () => {
+    process.env.POLYMARKET_PROXY_URL = "http://u:p@1.2.3.4:9999";
+    const request = vi.fn().mockResolvedValue({ status: 402, statusText: "Payment Required", data: "Bandwidth limit reached", headers: {} });
+    vi.doMock("axios", () => ({ default: { request, interceptors: { request: { use: vi.fn() } } } }));
+    const { polyFetch, proxyQuotaState } = await import("@/lib/polymarket/proxy-routing");
+    const r = await polyFetch("https://clob.polymarket.com/order", { method: "POST" });
+    expect(r.status).toBe(402);
+    expect(request).toHaveBeenCalledTimes(1);   // no pointless retries on an exhausted proxy
+    expect(proxyQuotaState().exhausted).toBe(true);
+    vi.doUnmock("axios");
+  });
+
+  it("throws after exhausting retries on persistent network failure", async () => {
+    process.env.POLYMARKET_PROXY_URL = "http://u:p@1.2.3.4:9999";
+    process.env.POLYMARKET_PROXY_MAX_ATTEMPTS = "2";
+    const request = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    vi.doMock("axios", () => ({ default: { request, interceptors: { request: { use: vi.fn() } } } }));
+    const { polyFetch } = await import("@/lib/polymarket/proxy-routing");
+    await expect(polyFetch("https://clob.polymarket.com/markets")).rejects.toThrow(/polyFetch failed/);
+    expect(request).toHaveBeenCalledTimes(2);
+    vi.doUnmock("axios");
+  }, 15_000);
+});
+
 describe("proxy-routing — host matching is conservative", () => {
   it("matches each documented Polymarket host", async () => {
     // We re-implement the same matching logic the module uses to assert the

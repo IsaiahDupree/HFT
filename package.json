@@ -186,7 +186,8 @@
     "maker:paper:daemon": "tsx scripts/maker-paper-daemon.ts",
     "maker:paper:report": "tsx scripts/maker-paper-report.ts",
     "pair:paper": "tsx scripts/binary-pair-maker-paper.ts",
-    "pair:report": "tsx scripts/pair-maker-report.ts"
+    "pair:report": "tsx scripts/pair-maker-report.ts",
+    "pair:backtest": "tsx scripts/pair-maker-backtest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

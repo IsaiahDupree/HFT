@@ -44,6 +44,8 @@
     "market:categorize": "tsx scripts/categorize-markets.ts",
     "derive:creds": "tsx scripts/derive-clob-creds.ts",
     "extract:poly-keys": "tsx scripts/extract-poly-keys.ts",
+    "pmxt:fetch": "python3 scripts/pmxt_fetch.py",
+    "pmxt:extract": "python3 scripts/pmxt_extract.py",
     "capture:poly-order": "tsx scripts/capture-poly-order.ts",
     "fetch:docs": "bash scripts/fetch-docs.sh",
     "db:init": "tsx scripts/init-db.ts",

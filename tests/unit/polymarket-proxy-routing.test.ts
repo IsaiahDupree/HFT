@@ -177,3 +177,47 @@ describe("proxy-routing — host matching is conservative", () => {
     // querystring on purpose.
   });
 });
+
+describe("proxy-routing — proxy POOL with failover", () => {
+  it("_parseProxyPool: bare host:port fallbacks inherit primary creds", async () => {
+    const { _parseProxyPool } = await import("@/lib/polymarket/proxy-routing");
+    const env = {
+      POLYMARKET_PROXY_URL: "http://u:p@104.253.36.150:5588",
+      POLYMARKET_PROXY_FALLBACKS: "104.233.20.105:6121,92.112.137.142:6085",
+    } as any;
+    expect(_parseProxyPool(env)).toEqual([
+      "http://u:p@104.253.36.150:5588",
+      "http://u:p@104.233.20.105:6121",
+      "http://u:p@92.112.137.142:6085",
+    ]);
+  });
+
+  it("_parseProxyPool: explicit POLYMARKET_PROXY_POOL overrides primary+fallbacks", async () => {
+    const { _parseProxyPool } = await import("@/lib/polymarket/proxy-routing");
+    const env = {
+      POLYMARKET_PROXY_POOL: "http://u:p@a:1,http://u:p@b:2",
+      POLYMARKET_PROXY_URL: "http://u:p@z:9",
+      POLYMARKET_PROXY_FALLBACKS: "c:3",
+    } as any;
+    expect(_parseProxyPool(env)).toEqual(["http://u:p@a:1", "http://u:p@b:2"]);
+  });
+
+  it("rotateProxyAgent: advances through the pool and re-points env; no-op for size<=1", async () => {
+    process.env.POLYMARKET_PROXY_URL = "http://u:p@104.253.36.150:5588";
+    process.env.POLYMARKET_PROXY_FALLBACKS = "b:2,c:3";
+    const mod = await import("@/lib/polymarket/proxy-routing");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mod._resetProxyAgentForTests();
+    expect(mod.rotateProxyAgent("test")).toBe(true);
+    expect(process.env.POLYMARKET_PROXY_URL).toBe("http://u:p@b:2");
+    expect(mod.rotateProxyAgent()).toBe(true);
+    expect(process.env.POLYMARKET_PROXY_URL).toBe("http://u:p@c:3");
+    expect(mod.rotateProxyAgent()).toBe(true); // wraps
+    expect(process.env.POLYMARKET_PROXY_URL).toBe("http://u:p@104.253.36.150:5588");
+
+    // single-entry pool: rotation is a no-op
+    delete process.env.POLYMARKET_PROXY_FALLBACKS;
+    mod._resetProxyAgentForTests();
+    expect(mod.rotateProxyAgent("x")).toBe(false);
+  });
+});

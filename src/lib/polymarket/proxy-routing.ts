@@ -74,7 +74,52 @@ function getAgent(): any | null {
 }
 
 /** Re-read env (test-only — production reads once at first call). */
-export function _resetProxyAgentForTests(): void { _agent = undefined; }
+export function _resetProxyAgentForTests(): void { _agent = undefined; _pool = null; _poolIdx = 0; }
+
+// ---- proxy POOL with failover ----------------------------------------------
+// A single proxy is a SPOF: when it hits its Webshare bandwidth quota (402) or
+// drops, CLOB calls stall. Configure extra verified non-US proxies and polyFetch
+// rotates to the next one on a proxy-class failure.
+//   POLYMARKET_PROXY_POOL=http://u:p@h1:p1,http://u:p@h2:p2   (explicit, wins)
+//   POLYMARKET_PROXY_FALLBACKS=host:port,host:port            (inherit primary creds)
+let _pool: string[] | null = null;
+let _poolIdx = 0;
+
+export function _parseProxyPool(env: NodeJS.ProcessEnv = process.env): string[] {
+  const explicit = (env.POLYMARKET_PROXY_POOL ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const norm = (u: string) => (/^https?:\/\//.test(u) ? u : `http://${u}`);
+  if (explicit.length) return [...new Set(explicit.map(norm))];
+  const primary = (env.POLYMARKET_PROXY_URL ?? "").trim();
+  const pool: string[] = [];
+  if (primary) pool.push(norm(primary));
+  const creds = primary ? primary.replace(/^https?:\/\//, "").split("@").slice(0, -1).join("@") : "";
+  for (const fb of (env.POLYMARKET_PROXY_FALLBACKS ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+    if (/^https?:\/\//.test(fb) || fb.includes("@")) pool.push(norm(fb));
+    else if (creds) pool.push(`http://${creds}@${fb}`);
+    else pool.push(`http://${fb}`);
+  }
+  return [...new Set(pool)];
+}
+
+function getPool(): string[] {
+  if (_pool === null) _pool = _parseProxyPool();
+  return _pool;
+}
+
+/** Advance to the next proxy in the pool, rebuild the agent, and re-point env.
+ *  Returns true if it actually rotated (pool has >1 entry). */
+export function rotateProxyAgent(reason = ""): boolean {
+  const pool = getPool();
+  if (pool.length <= 1) return false;
+  _poolIdx = (_poolIdx + 1) % pool.length;
+  const url = pool[_poolIdx];
+  process.env.POLYMARKET_PROXY_URL = url;
+  process.env.HTTPS_PROXY = url;
+  process.env.HTTP_PROXY = url;
+  _agent = undefined; // force getAgent() to rebuild against the new proxy
+  console.warn(`[poly-proxy] rotated → ${url.replace(/^(https?:\/\/)[^@]*@/, "$1")}${reason ? ` (${reason})` : ""}`);
+  return true;
+}
 
 let _patched = false;
 
@@ -296,23 +341,28 @@ export async function polyFetch(input: string | URL, init?: RequestInit): Promis
   let lastErr: Error | null = null;
 
   for (let attempt = 1; attempt <= Math.max(1, PROXY_MAX_ATTEMPTS); attempt++) {
+    const activeAgent = getAgent() ?? agent;  // re-fetch: rotateProxyAgent() may have rebuilt it
     try {
       const axResp = await axios.request({
         url, method, headers, data: body,
-        httpsAgent: agent, httpAgent: agent, proxy: false,
+        httpsAgent: activeAgent, httpAgent: activeAgent, proxy: false,
         validateStatus: () => true,           // let us inspect 4xx/5xx instead of throwing
         responseType: "text",
         timeout: init?.signal && "reason" in init.signal ? undefined : PROXY_TIMEOUT_MS,
       });
 
       if (isProxyQuotaStatus(axResp.status)) {
+        // Quota on THIS proxy — a different proxy in the pool may still have bandwidth.
+        if (attempt < PROXY_MAX_ATTEMPTS && rotateProxyAgent("402 quota")) {
+          continue;                            // retry immediately on the next proxy
+        }
         _lastQuotaExhaustedAt = Date.now();
         console.error(
           `🚨 [poly-proxy] BANDWIDTH QUOTA EXHAUSTED (HTTP 402) on ${new URL(url).host} — ` +
-          `the Webshare plan is out of GB. CLOB calls will fail until you top up at ` +
-          `dashboard.webshare.io or rotate POLYMARKET_PROXY_URL in .env.local. Returning 402 to caller.`,
+          `the Webshare plan is out of GB on all pooled proxies. Top up at dashboard.webshare.io ` +
+          `or add POLYMARKET_PROXY_FALLBACKS in .env.local. Returning 402 to caller.`,
         );
-        return toResponse(axResp);            // retrying the exhausted proxy is pointless
+        return toResponse(axResp);            // pool exhausted — retrying is pointless
       }
 
       if (isTransientStatus(axResp.status) && attempt < PROXY_MAX_ATTEMPTS) {
@@ -324,12 +374,14 @@ export async function polyFetch(input: string | URL, init?: RequestInit): Promis
 
       return toResponse(axResp);
     } catch (e: any) {
-      // Network-level failure (timeout, DNS, proxy unreachable) — retry with backoff.
+      // Network-level failure (timeout, DNS, proxy unreachable) — rotate to the next
+      // pooled proxy (if any), then retry with backoff.
       lastErr = new Error(`polyFetch failed: ${e.message}`);
       if (attempt < PROXY_MAX_ATTEMPTS) {
-        const delay = 1000 * Math.pow(3, attempt - 1);
-        console.warn(`[poly-proxy] network error on ${new URL(url).host} (${e.message}) — retry ${attempt}/${PROXY_MAX_ATTEMPTS - 1} in ${delay}ms`);
-        await sleep(delay);
+        const rotated = rotateProxyAgent(`network error: ${String(e.message).slice(0, 40)}`);
+        const delay = rotated ? 0 : 1000 * Math.pow(3, attempt - 1);
+        console.warn(`[poly-proxy] network error on ${new URL(url).host} (${e.message}) — ${rotated ? "rotated proxy, " : ""}retry ${attempt}/${PROXY_MAX_ATTEMPTS - 1}${delay ? ` in ${delay}ms` : ""}`);
+        if (delay) await sleep(delay);
         continue;
       }
     }

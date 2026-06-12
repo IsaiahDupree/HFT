@@ -81,6 +81,8 @@
     "watch:aave-liq": "tsx scripts/watch-aave-liquidations.ts",
     "worker:consensus-exec": "tsx scripts/worker-consensus-executor.ts",
     "observe:wallet": "tsx scripts/observe-wallet.ts",
+    "shadow:run": "tsx scripts/shadow-wallet.ts",
+    "shadow:report": "tsx scripts/shadow-wallet-report.ts",
     "classify:wallet": "tsx scripts/classify-wallet.ts",
     "scan:near-resolution": "tsx scripts/scan-near-resolution.ts",
     "scan:cross-timeframe": "tsx scripts/scan-cross-timeframe.ts",
@@ -180,7 +182,9 @@
     "leadlag:campaign": "tsx scripts/leadlag-campaign.ts",
     "maker:paper": "tsx scripts/binary-maker-paper.ts",
     "maker:paper:daemon": "tsx scripts/maker-paper-daemon.ts",
-    "maker:paper:report": "tsx scripts/maker-paper-report.ts"
+    "maker:paper:report": "tsx scripts/maker-paper-report.ts",
+    "pair:paper": "tsx scripts/binary-pair-maker-paper.ts",
+    "pair:report": "tsx scripts/pair-maker-report.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

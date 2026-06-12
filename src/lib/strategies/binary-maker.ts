@@ -140,14 +140,28 @@ export function planQuotes(inp: PlanInputs): QuotePlan {
   const canBuy = inv + p.quoteSizeShares <= p.maxInventoryShares; // buying adds + inventory
   const canSell = inv - p.quoteSizeShares >= -p.maxInventoryShares; // selling adds − inventory
 
+  // The inventory-REDUCING side is the system's only exhaust valve — it must
+  // NEVER be withdrawn by the minEdge gate (RAILS-REVIEW finding 1: at high
+  // inventory the A-S skew compresses the reducing side's edge below minEdge,
+  // killing the one quote that sheds risk → cap-and-ride into resolution).
+  // It still respects the no-cross clamp and the opposite hard cap.
+  const bidReduces = inv < 0; // buying back reduces a short
+  const askReduces = inv > 0; // selling down reduces a long
+
   const yesBid: QuoteSide =
-    bidEdge >= p.minEdge && canBuy
-      ? { px: round4(bidPx), sz: p.quoteSizeShares, edge: bidEdge, reason: `buy ${(bidEdge * 100).toFixed(2)}¢ under fair (rebate ${(bidRebate * 100).toFixed(3)}¢)` }
+    (bidEdge >= p.minEdge || bidReduces) && canBuy
+      ? { px: round4(bidPx), sz: p.quoteSizeShares, edge: bidEdge,
+          reason: bidEdge >= p.minEdge
+            ? `buy ${(bidEdge * 100).toFixed(2)}¢ under fair (rebate ${(bidRebate * 100).toFixed(3)}¢)`
+            : `reduce-only exhaust (edge ${(bidEdge * 100).toFixed(2)}¢ < min, inv ${inv})` }
       : { px: round4(bidPx), sz: 0, edge: bidEdge, reason: !canBuy ? "inv cap (long)" : `edge ${(bidEdge * 100).toFixed(2)}¢ < min` };
 
   const yesAsk: QuoteSide =
-    askEdge >= p.minEdge && canSell
-      ? { px: round4(askPx), sz: p.quoteSizeShares, edge: askEdge, reason: `sell ${(askEdge * 100).toFixed(2)}¢ over fair (rebate ${(askRebate * 100).toFixed(3)}¢)` }
+    (askEdge >= p.minEdge || askReduces) && canSell
+      ? { px: round4(askPx), sz: p.quoteSizeShares, edge: askEdge,
+          reason: askEdge >= p.minEdge
+            ? `sell ${(askEdge * 100).toFixed(2)}¢ over fair (rebate ${(askRebate * 100).toFixed(3)}¢)`
+            : `reduce-only exhaust (edge ${(askEdge * 100).toFixed(2)}¢ < min, inv ${inv})` }
       : { px: round4(askPx), sz: 0, edge: askEdge, reason: !canSell ? "inv cap (short)" : `edge ${(askEdge * 100).toFixed(2)}¢ < min` };
 
   const active = yesBid.sz > 0 || yesAsk.sz > 0;

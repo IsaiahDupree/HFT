@@ -43,10 +43,12 @@ describe("Gamma URL construction", () => {
     expect(calls[0].url).toMatch(/\/events\/12345$/);
   });
 
-  it("marketsByCondition joins comma-separated ids (URLSearchParams encoded)", async () => {
+  it("marketsByCondition REPEATS the condition_ids param (comma-joined silently returns [])", async () => {
     await poly.marketsByCondition(["0xabc", "0xdef"]);
-    // URLSearchParams encodes `,` as `%2C` — Polymarket accepts both forms.
-    expect(calls[0].url).toMatch(/condition_ids=0xabc(,|%2C)0xdef/);
+    // Gamma stopped honoring comma-joined ids (observed 2026-06-11: [] with no
+    // error, zeroed copy-backtest's resolved mode). Verified live: the repeated
+    // form returns the union of single-id queries.
+    expect(calls[0].url).toMatch(/condition_ids=0xabc&condition_ids=0xdef/);
   });
 
   it.each([5, 10, 20, 50])("tags limit=$limit", async (limit) => {

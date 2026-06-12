@@ -34,6 +34,11 @@ const flag = (n: string, d = ""): string => {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1]! : d;
 };
 const SYMBOL = flag("--symbol", "BTC").toUpperCase() as "BTC" | "ETH";
+// "pair" (default) = the merge-maker (binary-pair-maker-paper) — the lane with
+// verified winners. "naked" = the demoted single-token FV maker, kept for A/B
+// reference runs only (formally demoted 2026-06-11: market mid out-forecasts
+// the fair value).
+const STRATEGY = flag("--strategy", "pair") as "pair" | "naked";
 const MIN_TAU_SEC = Number(flag("--min-tau-sec", "240")); // skip markets about to expire
 const STOP_BEFORE_SEC = Number(flag("--stop-before-sec", "20"));
 const PROBE_SLEEP_SEC = Number(flag("--probe-sleep-sec", "45"));
@@ -43,7 +48,7 @@ const NAME = SYMBOL === "BTC" ? "bitcoin" : "ethereum";
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const log = (s: string) => console.log(`[${new Date().toISOString()}] ${s}`);
 
-type Target = { question: string; tokenId: string; startMs: number; endMs: number };
+type Target = { question: string; tokenId: string; noTokenId: string; startMs: number; endMs: number };
 
 // tokens whose session aborted STRIKE-SUSPECT — never re-enter (would loop until expiry)
 const blacklisted = new Set<string>();
@@ -71,12 +76,14 @@ async function discover(): Promise<Target | null> {
       const endMs = Date.parse(m?.endDate ?? "");
       if (!Number.isFinite(endMs) || endMs - now < MIN_TAU_SEC * 1000) continue;
 
-      let tokenId = "";
+      let tokenId = "", noTokenId = "";
       try {
         const ids = typeof m.clobTokenIds === "string" ? JSON.parse(m.clobTokenIds) : m.clobTokenIds;
         tokenId = Array.isArray(ids) && ids[0] ? String(ids[0]) : "";
+        noTokenId = Array.isArray(ids) && ids[1] ? String(ids[1]) : "";
       } catch { /* skip */ }
       if (!tokenId || blacklisted.has(tokenId)) continue;
+      if (STRATEGY === "pair" && !noTokenId) continue; // pair maker needs both legs
 
       // Candle start = endMs − the market's true duration, parsed from the title.
       // The Up/Down family runs THREE series at once (hourly "11PM ET", 15-min
@@ -87,7 +94,7 @@ async function discover(): Promise<Target | null> {
       const durMin = rangeDurationMinutes(q);
       if (durMin === null) { log(`unparseable duration, skipping: "${q}"`); continue; }
       const startMs = endMs - durMin * 60e3;
-      return { question: q, tokenId, startMs, endMs };
+      return { question: q, tokenId, noTokenId, startMs, endMs };
     }
   }
   return null;
@@ -118,21 +125,25 @@ async function candleOpen(startMs: number): Promise<number | null> {
 
 function runPaper(t: Target, strike: number): Promise<number> {
   const seconds = Math.max(30, Math.floor((t.endMs - Date.now()) / 1000) - STOP_BEFORE_SEC);
-  log(`session start: "${t.question}" strike ${strike} τ ${(seconds / 60).toFixed(1)}min token …${t.tokenId.slice(-8)}`);
+  const durationMin = String(Math.round((t.endMs - t.startMs) / 60e3));
+  log(`session start [${STRATEGY}]: "${t.question}" strike ${strike} τ ${(seconds / 60).toFixed(1)}min token …${t.tokenId.slice(-8)}`);
+  // calibrated to the PROFITABLE updown makers (SWEEP-2026-06-11-ROUND2):
+  // $1-14 median fills; the -$1.29M dead maker ran 4x clips at 13s requote.
+  const args =
+    STRATEGY === "pair"
+      ? ["tsx", "scripts/binary-pair-maker-paper.ts",
+          "--yes-token", t.tokenId, "--no-token", t.noTokenId, "--symbol", SYMBOL,
+          "--strike", String(strike), "--expiry-iso", new Date(t.endMs).toISOString(),
+          "--seconds", String(seconds), "--tick-ms", TICK_MS,
+          "--question", t.question, "--abort-divergence", "35", "--duration-min", durationMin,
+          "--size", "25", "--max-unpaired", "50", "--merge-margin", "0.02", "--tau-floor", "60"]
+      : ["tsx", "scripts/binary-maker-paper.ts", "--token", t.tokenId, "--symbol", SYMBOL,
+          "--strike", String(strike), "--expiry-iso", new Date(t.endMs).toISOString(),
+          "--seconds", String(seconds), "--tick-ms", TICK_MS, "--fv", "enhanced",
+          "--question", t.question, "--abort-divergence", "35", "--duration-min", durationMin,
+          "--size", "25", "--max-inventory", "250"];
   return new Promise((resolveP) => {
-    const child = spawn(
-      "npx",
-      ["tsx", "scripts/binary-maker-paper.ts", "--token", t.tokenId, "--symbol", SYMBOL,
-        "--strike", String(strike), "--expiry-iso", new Date(t.endMs).toISOString(),
-        "--seconds", String(seconds), "--tick-ms", TICK_MS, "--fv", "enhanced",
-        "--question", t.question, "--abort-divergence", "35",
-        "--duration-min", String(Math.round((t.endMs - t.startMs) / 60e3)),
-        // calibrated to the PROFITABLE updown makers (SWEEP-2026-06-11-ROUND2):
-        // $1-14 median fills and tight inventory; the -$1.29M dead maker ran 4x
-        // clips. 25 shares ≈ $5-15 per fill at typical prices.
-        "--size", "25", "--max-inventory", "250"],
-      { cwd: process.cwd(), stdio: "inherit" },
-    );
+    const child = spawn("npx", args, { cwd: process.cwd(), stdio: "inherit" });
     const killer = setTimeout(() => { try { child.kill("SIGTERM"); } catch { /* */ } }, (seconds + 90) * 1000);
     child.on("exit", (code) => { clearTimeout(killer); resolveP(code ?? 1); });
     child.on("error", () => { clearTimeout(killer); resolveP(1); });

@@ -3,6 +3,14 @@
  * If we get a 4xx OTHER than 403, that proxy IP is accepted for order writes
  * (and the rejection comes from validation, not geo). 403 = geo-blocked.
  *
+ * IMPORTANT (verified 2026-06-11): Polymarket geo-blocks ORDER PLACEMENT from
+ * US IPs but allows AUTH/reads from anywhere — so a US-egress proxy passes
+ * auth + market reads yet bounces every order ("Trading restricted in your
+ * region"). The egress MUST be NON-US. Confirm with:
+ *   curl --proxy <url> https://ipinfo.io/country   (want non-"US")
+ * The polymarket-weather repo has scripts/proxy-benchmark.sh to rank a whole
+ * Webshare list by egress country + CLOB latency (fastest reliable found: CA).
+ *
  * Reads proxy credentials from POLYMARKET_PROXY_URL in .env.local — does NOT
  * commit secrets to git.
  */

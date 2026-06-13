@@ -55,6 +55,43 @@ export function skewness(a: number[]): number { const { m2, m3 } = moments(a); r
 export function excessKurtosis(a: number[]): number { const { m2, m4 } = moments(a); return m2 > 0 ? m4 / (m2 * m2) - 3 : 0; }
 
 /**
+ * Newey-West (HAC) long-run variance of a return series with a Bartlett kernel:
+ *   LRV = γ₀ + 2·Σ_{k=1..L} (1 − k/(L+1))·γ_k        (γ_k = autocovariance at lag k)
+ * Financial returns/vol cluster in time, so the iid variance γ₀ understates the true
+ * variance of the sample mean — which inflates Sharpe t-stats and FLATTERS the edge
+ * (the gap Roan/RohOnChain correctly flags; `cov_type='HAC'` in statsmodels). Default
+ * maxlags ≈ ⌊4·(T/100)^(2/9)⌋ (Newey-West 1994 automatic bandwidth).
+ */
+export function neweyWestLRV(rets: number[], maxlags?: number): number {
+  const T = rets.length;
+  if (T < 4) return std(rets) ** 2;
+  const m = mean(rets);
+  const L = Math.max(1, maxlags ?? Math.floor(4 * (T / 100) ** (2 / 9)));
+  const gamma = (k: number) => { let s = 0; for (let t = k; t < T; t++) s += (rets[t] - m) * (rets[t - k] - m); return s / T; };
+  let lrv = gamma(0);
+  for (let k = 1; k <= L; k++) lrv += 2 * (1 - k / (L + 1)) * gamma(k);
+  return Math.max(lrv, 1e-12);
+}
+
+/**
+ * HAC-corrected significance of the mean return (the "alpha is the intercept" test for a
+ * single return series). Returns the iid t-stat, the Newey-West t-stat, the variance-ratio
+ * inflation (LRV/γ₀ — >1 ⇒ positive autocorr was flattering the iid stat), and the EFFECTIVE
+ * sample size T·γ₀/LRV. Feed effT (not T) into the DSR/Sharpe-SE when returns autocorrelate —
+ * e.g. funding-carry daily returns cluster, so the naive Sharpe 7.51 overstates its own t.
+ */
+export function hacMeanTStat(rets: number[], maxlags?: number): { tIid: number; tHac: number; lrvRatio: number; effT: number; lags: number } {
+  const T = rets.length;
+  const m = mean(rets), g0 = std(rets) ** 2;
+  if (T < 4 || g0 <= 0) return { tIid: 0, tHac: 0, lrvRatio: 1, effT: T, lags: 0 };
+  const L = Math.max(1, maxlags ?? Math.floor(4 * (T / 100) ** (2 / 9)));
+  const lrv = neweyWestLRV(rets, L);
+  const tIid = m / Math.sqrt(g0 / T);
+  const tHac = m / Math.sqrt(lrv / T);
+  return { tIid, tHac, lrvRatio: lrv / g0, effT: (T * g0) / lrv, lags: L };
+}
+
+/**
  * Deflated Sharpe Ratio (Bailey & López de Prado 2014): P(true Sharpe > 0) after
  * deflating the best per-period Sharpe for multiple testing AND return non-normality.
  *   SR0 = √Var[{SR_n}] · [(1−γ)Φ⁻¹(1−1/N) + γΦ⁻¹(1−1/(Ne))]   ← expected max under null

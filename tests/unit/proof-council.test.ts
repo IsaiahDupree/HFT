@@ -4,11 +4,13 @@ import {
   type StrategyEvidence,
 } from "@/lib/backtest/proof-council";
 
-// A robustness-clean edge (clears every gauntlet bar).
+// A robustness-clean edge (clears every gauntlet bar — including the HAC/Newey-West
+// autocorrelation bar: a Sharpe edge must survive HAC de-rating to be fully proven).
 const HARDENED = (): StrategyEvidence => ({
   label: "mom-5d", bars: 800, feeBps: 10,
   oosSharpeAnn: 1.4, fullSharpeAnn: 1.6, oosHold: 5, variants: 6,
   pbo: 0.12, dsr: 0.98, cumPnlPct: 23, regimesCovered: 3,
+  iidTStat: 3.1, hacTStat: 2.6, lrvRatio: 1.4, effT: 570,
 });
 
 describe("proof-council — verdict logic", () => {
@@ -23,6 +25,28 @@ describe("proof-council — verdict logic", () => {
     expect(r.advocate.some((a) => /Deflated-Sharpe 0\.98/.test(a))).toBe(true);
     expect(r.advocate.some((a) => /PBO 0\.12/.test(a))).toBe(true);
     expect(r.advocate.some((a) => /cumulative PnL \+23\.0%/.test(a))).toBe(true);
+  });
+
+  it("REPAIR_FIRST when the Sharpe does NOT survive HAC/Newey-West correction (autocorrelation artifact)", () => {
+    const r = proofCouncil({ ...HARDENED(), iidTStat: 5.39, hacTStat: 1.4, lrvRatio: 3.3, effT: 150 });
+    expect(r.verdict).toBe("REPAIR_FIRST");
+    expect(r.skeptic.some((s) => /HAC t-stat 1\.40 < 2.*does NOT survive/i.test(s))).toBe(true);
+  });
+
+  it("PROVE_IT when a DAILY-return Sharpe edge (carry) supplies NO HAC t-stat (autocorrelation not ruled out)", () => {
+    const { iidTStat, hacTStat, lrvRatio, effT, ...noHac } = HARDENED();
+    const r = proofCouncil({ ...noHac, sampleUnit: "days" });   // carry/basis = daily returns where HAC bites
+    expect(r.verdict).toBe("PROVE_IT");
+    expect(r.skeptic.some((s) => /not HAC\/Newey-West-corrected/i.test(s))).toBe(true);
+    // a bar/event-based Sharpe edge with no HAC is NOT gated (HAC scoped to daily returns)
+    expect(proofCouncil(noHac).verdict).toBe("ADVOCATE_APPROVED");
+  });
+
+  it("HAC survival shows an advocate line, and binary (winRate) edges never hit the HAC gap", () => {
+    expect(proofCouncil(HARDENED()).advocate.some((a) => /survives HAC.*Newey-West t 2\.60/i.test(a))).toBe(true);
+    // a binary edge reports winRate+Wilson, not a Sharpe — must not be gated on HAC
+    const binary = proofCouncil({ label: "fvbot", bars: 517, feeBps: 0, winRate: 0.453, nTrades: 517, oosSharpeAnn: 0.6, pbo: 0.1, dsr: 0.97, regimesCovered: 3, cumPnlPct: 5 });
+    expect(binary.verdict).toBe("ADVOCATE_APPROVED");
   });
 
   it("PROVE_IT when robust OOS but Deflated-Sharpe is short of the bar", () => {

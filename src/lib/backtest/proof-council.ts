@@ -58,6 +58,18 @@ export type StrategyEvidence = {
   /** Optional discrete-outcome evidence → a Wilson win-rate floor advocate line. */
   winRate?: number;
   nTrades?: number;
+  // ── HAC / Newey-West autocorrelation correction (from stats.hacMeanTStat) ──
+  // CARRY/BASIS returns cluster in time, so the iid Sharpe t-stat is mechanically
+  // OVERSTATED. Supply these for any Sharpe-based edge so a flattered t cannot reach
+  // ADVOCATE_APPROVED. N/A for independent binary edges (those use winRate+Wilson).
+  /** iid Sharpe t-stat (mean/SE, no autocorr correction). */
+  iidTStat?: number;
+  /** Newey-West HAC-corrected t-stat of the mean return. */
+  hacTStat?: number;
+  /** LRV/γ₀ — variance-ratio inflation; >1 ⇒ positive autocorr was flattering the iid t. */
+  lrvRatio?: number;
+  /** Effective sample size T·γ₀/LRV after autocorrelation. */
+  effT?: number;
 };
 
 export type ProofVerdict = "ADVOCATE_APPROVED" | "PROVE_IT" | "REPAIR_FIRST";
@@ -68,6 +80,8 @@ export type ProofThresholds = {
   minRegimes: number; minOosHoldFrac: number;
   /** Max-drawdown ceiling (fraction) — breaching it is a universal REPAIR_FIRST blocker. */
   ddCeil: number;
+  /** Min HAC/Newey-West t-stat for a Sharpe edge to survive autocorrelation (Roan's t>2 bar). */
+  hacTMin: number;
   // penny-lock objective
   pennyMinTrades: number;  // min trades to establish a high win rate
   pennyWinFloor: number;   // CI-low floor when no payoff given (high-confidence assumption)
@@ -75,7 +89,7 @@ export type ProofThresholds = {
 };
 export const DEFAULT_PROOF_THRESHOLDS: ProofThresholds = {
   minBars: 60, pboHard: 0.5, pboClean: 0.3, dsrClean: 0.95, minRegimes: 2, minOosHoldFrac: 0.5,
-  ddCeil: 0.25, pennyMinTrades: 100, pennyWinFloor: 0.9, pennyMargin: 0.02,
+  ddCeil: 0.25, hacTMin: 2.0, pennyMinTrades: 100, pennyWinFloor: 0.9, pennyMargin: 0.02,
 };
 
 /** Wilson score lower bound for a binomial win rate (z = 1.96 ≈ 95%). Pure. */
@@ -112,6 +126,7 @@ export function proofCouncil(ev: StrategyEvidence, thr: ProofThresholds = DEFAUL
   if (ev.pbo != null && ev.pbo > thr.pboHard) blockers.push(`PBO ${ev.pbo.toFixed(2)} > ${thr.pboHard} — backtest is overfit (IS-best underperforms OOS)`);
   if (holdFrac != null && (ev.variants ?? 0) > 1 && holdFrac <= thr.minOosHoldFrac) blockers.push(`only ${ev.oosHold}/${ev.variants} variants held OOS (≤ half) — selection looks like noise`);
   if (ev.maxDdPct != null && ev.maxDdPct > thr.ddCeil) blockers.push(`max drawdown ${(ev.maxDdPct * 100).toFixed(1)}% > ${(thr.ddCeil * 100).toFixed(0)}% ceiling — risk too high to deploy`);
+  if (ev.hacTStat != null && ev.hacTStat < thr.hacTMin) blockers.push(`HAC t-stat ${ev.hacTStat.toFixed(2)} < ${thr.hacTMin} — the Sharpe does NOT survive Newey-West autocorrelation correction${ev.iidTStat != null ? ` (iid t ${ev.iidTStat.toFixed(2)} was flattering it)` : ""}${ev.lrvRatio != null ? `, LRV/γ₀ ${ev.lrvRatio.toFixed(2)}` : ""}${ev.effT != null ? `, effT ${Math.round(ev.effT)}` : ""} — clustered returns, not a real edge`);
 
   // ── advocate: what the metrics PROVE (cleared bars only) ──
   const advocate: string[] = [];
@@ -121,6 +136,7 @@ export function proofCouncil(ev: StrategyEvidence, thr: ProofThresholds = DEFAUL
   if (holdFrac != null && holdFrac > thr.minOosHoldFrac) advocate.push(`${ev.oosHold}/${ev.variants} variants held OOS (majority-robust selection)`);
   if (ev.pbo != null && ev.pbo < thr.pboClean) advocate.push(`PBO ${ev.pbo.toFixed(2)} < ${thr.pboClean} — low backtest-overfit probability`);
   if (ev.dsr != null && ev.dsr > thr.dsrClean) advocate.push(`Deflated-Sharpe ${ev.dsr.toFixed(2)} > ${thr.dsrClean} — survives multiple-testing deflation`);
+  if (ev.hacTStat != null && ev.hacTStat >= thr.hacTMin) advocate.push(`Sharpe survives HAC: ${ev.iidTStat != null ? `iid t ${ev.iidTStat.toFixed(2)} → ` : ""}Newey-West t ${ev.hacTStat.toFixed(2)} ≥ ${thr.hacTMin}${ev.lrvRatio != null ? ` (LRV/γ₀ ${ev.lrvRatio.toFixed(2)}, effT ${Math.round(ev.effT ?? 0)})` : ""} — not an autocorrelation artifact`);
   if (ev.winRate != null && ev.nTrades && ev.nTrades > 0) {
     const floor = wilsonLowerBound(Math.round(ev.winRate * ev.nTrades), ev.nTrades);
     advocate.push(`win ${(ev.winRate * 100).toFixed(1)}% on ${ev.nTrades} trades, Wilson floor ${(floor * 100).toFixed(1)}%`);
@@ -137,6 +153,12 @@ export function proofCouncil(ev: StrategyEvidence, thr: ProofThresholds = DEFAUL
   else if (ev.pbo >= thr.pboClean) gaps.push(`PBO ${ev.pbo.toFixed(2)} ≥ ${thr.pboClean} — borderline overfit`);
   if (ev.dsr == null) gaps.push("Deflated-Sharpe not computed — multiple-testing not ruled out");
   else if (ev.dsr <= thr.dsrClean) gaps.push(`Deflated-Sharpe ${ev.dsr.toFixed(2)} short of ${thr.dsrClean} — multiple-testing not fully ruled out`);
+  // a DAILY-return Sharpe edge (carry/basis/calendar) cannot be APPROVED on an un-HAC-corrected
+  // t-stat: daily carry returns cluster, so the iid Sharpe flatters itself (Roan/RohOnChain's
+  // Newey-West point). Scoped to sampleUnit "days" — where autocorrelation actually bites; binary
+  // edges (winRate+Wilson) and bar/event-based edges don't hit this gap. HAC, when supplied, is
+  // still checked for ALL edges (blocker on fail, advocate on pass) above.
+  if (ev.oosSharpeAnn != null && ev.winRate == null && ev.hacTStat == null && ev.sampleUnit === "days") gaps.push("daily-return Sharpe not HAC/Newey-West-corrected — clustered carry/basis returns flatter the iid t; supply hacTStat via stats.hacMeanTStat");
   if (ev.regimesCovered != null && ev.regimesCovered > 0 && ev.regimesCovered < thr.minRegimes) {
     gaps.push(`only ${ev.regimesCovered} market regime(s) in the sample — unproven across regimes`);
   }

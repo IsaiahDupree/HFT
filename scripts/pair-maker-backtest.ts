@@ -39,6 +39,7 @@ import {
 } from "../src/lib/backtest/queue-fill.ts";
 import { fairValueFromMinuteCloses } from "../src/lib/strategies/binary-fair-value.ts";
 import { planPairQuotes, settleMerge, type PairMakerParams } from "../src/lib/strategies/binary-pair-maker.ts";
+import { applyFillRiskOverlay, type FrTrade } from "../src/lib/strategies/fill-risk.ts";
 import { makerRebate, type FeeCategory } from "../src/lib/strategies/as-market-maker.ts";
 
 // ── CLI ──
@@ -54,7 +55,9 @@ const FEE_CAT = flag("--fee-category", "crypto") as FeeCategory;
 const OUT = flag("--out");
 const VOL_BARS = Number(flag("--vol-bars", "10")); // paper loop uses max(10, min(60, durationMin)) → 10 for 5m
 const COST_GUARD = process.argv.includes("--cost-guard");
+const FILL_RISK = process.argv.includes("--fill-risk"); // ACTING overlay (widen/pull on adverse tape)
 const FAMILIES = flag("--families", ""); // comma list to keep, e.g. "eth-updown-5m"; empty = all
+const FR_WINDOW_S = 3600; // longest fill_risk lookback (long_s) — keep this much tape per leg
 
 const params: PairMakerParams = {
   quoteSizeShares: Number(flag("--size", "25")),
@@ -138,6 +141,7 @@ type WindowResult = {
   residualCost: number; residualSettle: number; residualPnl: number;
   pnlSettled: number;
   quoteTicks: number; bothSidesTicks: number;
+  frPullTicks: number; frWidenTicks: number;
 };
 
 function bucketOf(u: number): string {
@@ -170,6 +174,9 @@ function runWindow(w: ManifestWindow, klines: Kline[]): WindowResult {
     YES: { quote: null, q: null, pendingVisible: 0, fillsSeen: 0 },
     NO: { quote: null, q: null, pendingVisible: 0, fillsSeen: 0 },
   };
+  // rolling trade tape per leg (seconds clock), for the fill_risk overlay
+  const tape: Record<"YES" | "NO", FrTrade[]> = { YES: [], NO: [] };
+  let frPullTicks = 0, frWidenTicks = 0; // diagnostics: how often the overlay acted
 
   let invYes = 0, invNo = 0, costYes = 0, costNo = 0;
   let cash = 0, rebates = 0, mergedSets = 0, lockedMargin = 0, fillsCount = 0, sharesBought = 0;
@@ -191,6 +198,12 @@ function runWindow(w: ManifestWindow, klines: Kline[]): WindowResult {
   };
 
   const feedLeg = (leg: "YES" | "NO", ev: PmxtEvent): void => {
+    // capture every print into the leg's rolling tape (seconds clock) for fill_risk
+    if (ev.type === "trade") {
+      tape[leg].push({ ts: ev.ts / 1000, side: ev.aggressor, size: ev.size });
+      const cutoff = ev.ts / 1000 - FR_WINDOW_S;
+      while (tape[leg].length && tape[leg][0]!.ts < cutoff) tape[leg].shift();
+    }
     const st = legs[leg];
     if (!st.quote) return;
     const visibleNow = ev.type === "book" ? levelSizeAt(ev.bids, st.quote.price) : null;
@@ -222,11 +235,28 @@ function runWindow(w: ManifestWindow, klines: Kline[]): WindowResult {
       ? planPairQuotes({ pFair: fv.pFair, yesBook: top(yes), noBook: top(no), yesShares: invYes, noShares: invNo, yesCost: costYes, noCost: costNo, tauSec, params })
       : { yesBid: null, noBid: null, mergeable: 0, unpaired: invYes - invNo, note: "no fair/book" };
 
+    // ── fill_risk overlay (ACTING): widen/pull the side under adverse tape pressure ──
+    let yesWant = plan.yesBid ? { px: plan.yesBid.px, sz: plan.yesBid.sz } : null;
+    let noWant = plan.noBid ? { px: plan.noBid.px, sz: plan.noBid.sz } : null;
+    if (FILL_RISK && (yesWant || noWant) && yes && no) {
+      const ov = applyFillRiskOverlay({
+        yesBid: yesWant, noBid: noWant,
+        yesTrades: tape.YES, noTrades: tape.NO,
+        now: nowMs / 1000,
+        yesTouch: top(yes), noTouch: top(no),
+      });
+      // diagnostics
+      if (yesWant && !ov.yesBid) frPullTicks++; else if (yesWant && ov.yesBid && ov.yesBid.px < yesWant.px - 1e-9) frWidenTicks++;
+      if (noWant && !ov.noBid) frPullTicks++; else if (noWant && ov.noBid && ov.noBid.px < noWant.px - 1e-9) frWidenTicks++;
+      yesWant = ov.yesBid;
+      noWant = ov.noBid;
+    }
+
     quoteTicks++;
-    if (plan.yesBid && plan.noBid) bothSidesTicks++;
+    if (yesWant && noWant) bothSidesTicks++;
 
     for (const leg of ["YES", "NO"] as const) {
-      const want = leg === "YES" ? plan.yesBid : plan.noBid;
+      const want = leg === "YES" ? yesWant : noWant;
       const st = legs[leg];
       if (!want) { st.quote = null; st.q = null; st.fillsSeen = 0; continue; }
       if (st.quote && Math.abs(st.quote.price - want.px) < 1e-9) continue; // same px → KEEP queue position
@@ -281,7 +311,7 @@ function runWindow(w: ManifestWindow, klines: Kline[]): WindowResult {
     residUp: invYes, residDown: invNo, unpaired, bucket: bucketOf(unpaired),
     residualCost: +residualCost.toFixed(4), residualSettle: +residualSettle.toFixed(4),
     residualPnl: +residualPnl.toFixed(4), pnlSettled: +pnlSettled.toFixed(4),
-    quoteTicks, bothSidesTicks,
+    quoteTicks, bothSidesTicks, frPullTicks, frWidenTicks,
   };
 }
 
@@ -295,7 +325,7 @@ const minStart = Math.min(...windows.map((w) => w.startSec)) * 1000;
 const maxEnd = Math.max(...windows.map((w) => w.endSec)) * 1000;
 
 console.log(`pair-maker-backtest (G3) — ${windows.length} windows (${skippedEmpty} empty-leg skipped${famKeep ? `, families=${[...famKeep].join("+")}` : ""}) | cancel ${CANCEL_MODE} | tick ${TICK_MS}ms ack ${ACK_MS}ms`);
-console.log(`params: size ${params.quoteSizeShares} margin ${params.mergeMargin} feeBuf ${params.feeBuffer} maxUnpaired ${params.maxUnpairedShares} tauFloor ${params.tauFloorSec}s safetyEdge ${params.safetyEdge} costGuard ${params.costGuard ? "ON" : "off"}\n`);
+console.log(`params: size ${params.quoteSizeShares} margin ${params.mergeMargin} feeBuf ${params.feeBuffer} maxUnpaired ${params.maxUnpairedShares} tauFloor ${params.tauFloorSec}s safetyEdge ${params.safetyEdge} costGuard ${params.costGuard ? "ON" : "off"} fillRisk ${FILL_RISK ? "ACTING" : "off"}\n`);
 
 const symbols = [...new Set(windows.map((w) => famSymbol(w.family)))];
 const klinesBySym: Record<string, Kline[]> = {};
@@ -326,6 +356,9 @@ const total = settled.reduce((s, r) => s + r.pnlSettled, 0);
 const lockedMarginSum = settled.reduce((s, r) => s + r.lockedMargin, 0); // the structural check
 const rebatesSum = settled.reduce((s, r) => s + r.rebates, 0);
 const negMarginWindows = settled.filter((r) => r.lockedMargin < -1e-6).length;
+const unpairedSharesTotal = settled.reduce((s, r) => s + r.unpaired, 0); // what fill_risk should reduce
+const frPullsTotal = settled.reduce((s, r) => s + r.frPullTicks, 0);
+const frWidensTotal = settled.reduce((s, r) => s + r.frWidenTicks, 0);
 const residRows = settled.filter((r) => r.residUp > 0 || r.residDown > 0);
 const residWins = residRows.filter((r) => r.residualPnl > 0).length;
 
@@ -355,7 +388,8 @@ const summary = {
   filledShares: +filledShares.toFixed(1), mergedShares,
   pairCompletion: +completion.toFixed(4),
   lockedMarginSum: +lockedMarginSum.toFixed(4), rebatesSum: +rebatesSum.toFixed(4),
-  negMarginWindows,
+  negMarginWindows, unpairedSharesTotal, fillRiskActing: FILL_RISK,
+  frPullsTotal, frWidensTotal,
   makerIncome: +makerIncome.toFixed(4), residualSettlePnl: +residual.toFixed(4),
   totalPnl: +total.toFixed(4),
   residualWindows: residRows.length, residualWins: residWins,
@@ -367,6 +401,7 @@ const summary = {
 console.log(`\n── G3 aggregate (${CANCEL_MODE}) ──`);
 console.log(`  windows ${summary.windows} (fills in ${summary.windowsWithFills}) · filled shares ${summary.filledShares} · merged sets ${mergedShares} · pair completion ${(completion * 100).toFixed(1)}%`);
 console.log(`  STRUCTURAL: locked margin $${lockedMarginSum.toFixed(2)} (${negMarginWindows} windows with NEGATIVE locked margin) + rebates $${rebatesSum.toFixed(2)}`);
+console.log(`  UNPAIRED shares total ${unpairedSharesTotal.toFixed(0)} (what fill_risk should reduce)${FILL_RISK ? ` | fr acted: ${frPullsTotal} pulls + ${frWidensTotal} widens` : ""}`);
 console.log(`  maker income $${makerIncome.toFixed(2)} (locked margin + rebates) · residual settle $${residual.toFixed(2)} over ${residRows.length} windows (${residWins} wins)`);
 console.log(`  TOTAL $${total.toFixed(2)}  →  ${verdict}`);
 console.log(`  by bucket: ${JSON.stringify(summary.byBucket)}`);

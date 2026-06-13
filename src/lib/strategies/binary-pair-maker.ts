@@ -37,6 +37,20 @@ export type PairMakerParams = {
   tauFloorSec: number;
   /** Each bid must also sit at least this far under its own fair value, e.g. 0.01. */
   safetyEdge: number;
+  /**
+   * Realized-cost pair guard (G3 finding 2026-06-12). The pair budget caps the
+   * two CURRENT bids, but legs fill sequentially: when one side is already held,
+   * the completing complement re-prices upward and the pair can merge at >$1
+   * realized cost (G3 backtest: 56/146 windows locked NEGATIVE margin even at
+   * 84.6% completion; summed locked margin was −$106). When ON and a side holds
+   * unpaired inventory, the COMPLETING bid is additionally capped at
+   *   1 − mergeMargin − held_avg_cost,
+   * so every completed pair locks ≥ mergeMargin in REALIZED terms; if no
+   * tick-valid price survives that cap, the completing side is withdrawn.
+   * Default off — the baseline planner is unchanged. Ported from TradingBot2
+   * research/lastminute/merge_maker.py plan_merge_quotes (cost_up/cost_down).
+   */
+  costGuard?: boolean;
 };
 
 export type SideBook = { bestBid: number; bestAsk: number };
@@ -50,6 +64,13 @@ export type PairPlanInputs = {
   /** Current long share inventories (pair maker only ever BUYS). */
   yesShares: number;
   noShares: number;
+  /**
+   * Total dollars spent on each leg's CURRENT inventory (avg-cost basis).
+   * Only read when params.costGuard is on; the realized-cost guard caps the
+   * completing bid against the held leg's avg cost. Default 0 (no held cost).
+   */
+  yesCost?: number;
+  noCost?: number;
   /** Seconds to expiry. */
   tauSec: number;
   params: PairMakerParams;
@@ -127,9 +148,28 @@ export function planPairQuotes(inp: PairPlanInputs): PairPlan {
     if (noPx !== null && noPx < 0.01) noPx = null as any;
   }
 
+  // ── realized-cost pair guard: cap the COMPLETING bid vs the held leg's avg
+  //    cost, so the pair locks ≥ mergeMargin as it will ACTUALLY complete ──
+  let guardHit = false;
+  if (p.costGuard) {
+    // cap to the venue tick by FLOORING only — never clamp the floor up to 0.01,
+    // so a cap below one tick withdraws the side (matches the reference: d<TICK→None).
+    const capTick = (px: number): number => Math.round(Math.floor(px / TICK + 1e-9) * TICK * 100) / 100;
+    if (unpaired > 0 && inp.yesShares > 0 && noPx !== null) {
+      // long unpaired YES → NO completes; cap NO at 1 − margin − yesAvgCost
+      const yesAvg = (inp.yesCost ?? 0) / inp.yesShares;
+      const cap = capTick(1 - p.mergeMargin - yesAvg);
+      if (noPx > cap) { noPx = cap < 0.01 ? (null as any) : cap; guardHit = true; }
+    } else if (unpaired < 0 && inp.noShares > 0 && yesPx !== null) {
+      const noAvg = (inp.noCost ?? 0) / inp.noShares;
+      const cap = capTick(1 - p.mergeMargin - noAvg);
+      if (yesPx > cap) { yesPx = cap < 0.01 ? (null as any) : cap; guardHit = true; }
+    }
+  }
+
   // ── structural exhaust: unpaired cap — only quote the side that PAIRS ──
-  let yesBid: PairBid = yesPx !== null ? { px: yesPx, sz: p.quoteSizeShares, reason: "pair bid" } : null;
-  let noBid: PairBid = noPx !== null ? { px: noPx, sz: p.quoteSizeShares, reason: "pair bid" } : null;
+  let yesBid: PairBid = yesPx !== null ? { px: yesPx, sz: p.quoteSizeShares, reason: guardHit ? "cost-guard pair bid" : "pair bid" } : null;
+  let noBid: PairBid = noPx !== null ? { px: noPx, sz: p.quoteSizeShares, reason: guardHit ? "cost-guard pair bid" : "pair bid" } : null;
 
   if (unpaired >= p.maxUnpairedShares && yesBid) {
     yesBid = null; // too much excess YES — stop adding; NO bid pairs it down

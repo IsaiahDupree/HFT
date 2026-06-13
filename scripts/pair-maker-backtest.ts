@@ -53,6 +53,8 @@ const ACK_MS = Number(flag("--ack-ms", "250"));
 const FEE_CAT = flag("--fee-category", "crypto") as FeeCategory;
 const OUT = flag("--out");
 const VOL_BARS = Number(flag("--vol-bars", "10")); // paper loop uses max(10, min(60, durationMin)) → 10 for 5m
+const COST_GUARD = process.argv.includes("--cost-guard");
+const FAMILIES = flag("--families", ""); // comma list to keep, e.g. "eth-updown-5m"; empty = all
 
 const params: PairMakerParams = {
   quoteSizeShares: Number(flag("--size", "25")),
@@ -61,6 +63,7 @@ const params: PairMakerParams = {
   maxUnpairedShares: Number(flag("--max-unpaired", "50")),
   tauFloorSec: Number(flag("--tau-floor", "60")),
   safetyEdge: Number(flag("--safety-edge", "0.01")),
+  costGuard: COST_GUARD,
 };
 
 if (!MANIFEST || !existsSync(MANIFEST)) {
@@ -216,7 +219,7 @@ function runWindow(w: ManifestWindow, klines: Kline[]): WindowResult {
       bestAsk: b && b.asks.length ? b.asks[0]![0] : NaN,
     });
     const plan = fv && yes && no
-      ? planPairQuotes({ pFair: fv.pFair, yesBook: top(yes), noBook: top(no), yesShares: invYes, noShares: invNo, tauSec, params })
+      ? planPairQuotes({ pFair: fv.pFair, yesBook: top(yes), noBook: top(no), yesShares: invYes, noShares: invNo, yesCost: costYes, noCost: costNo, tauSec, params })
       : { yesBid: null, noBid: null, mergeable: 0, unpaired: invYes - invNo, note: "no fair/book" };
 
     quoteTicks++;
@@ -284,13 +287,15 @@ function runWindow(w: ManifestWindow, klines: Kline[]): WindowResult {
 
 // ── main ──
 const famSymbol = (family: string): string => `${family.split("-")[0]!.toUpperCase()}USDT`;
-const windows = manifest.windows.filter((w) => w.statsUp.emitted > 0 && w.statsDown.emitted > 0);
-const skippedEmpty = manifest.windows.length - windows.length;
+const famKeep = FAMILIES ? new Set(FAMILIES.split(",").map((s) => s.trim()).filter(Boolean)) : null;
+const nonEmpty = manifest.windows.filter((w) => w.statsUp.emitted > 0 && w.statsDown.emitted > 0);
+const windows = famKeep ? nonEmpty.filter((w) => famKeep.has(w.family)) : nonEmpty;
+const skippedEmpty = manifest.windows.length - nonEmpty.length;
 const minStart = Math.min(...windows.map((w) => w.startSec)) * 1000;
 const maxEnd = Math.max(...windows.map((w) => w.endSec)) * 1000;
 
-console.log(`pair-maker-backtest (G3) — ${windows.length} windows (${skippedEmpty} skipped: empty leg) | cancel-mode ${CANCEL_MODE} | tick ${TICK_MS}ms ack ${ACK_MS}ms`);
-console.log(`params: size ${params.quoteSizeShares} margin ${params.mergeMargin} feeBuf ${params.feeBuffer} maxUnpaired ${params.maxUnpairedShares} tauFloor ${params.tauFloorSec}s safetyEdge ${params.safetyEdge}\n`);
+console.log(`pair-maker-backtest (G3) — ${windows.length} windows (${skippedEmpty} empty-leg skipped${famKeep ? `, families=${[...famKeep].join("+")}` : ""}) | cancel ${CANCEL_MODE} | tick ${TICK_MS}ms ack ${ACK_MS}ms`);
+console.log(`params: size ${params.quoteSizeShares} margin ${params.mergeMargin} feeBuf ${params.feeBuffer} maxUnpaired ${params.maxUnpairedShares} tauFloor ${params.tauFloorSec}s safetyEdge ${params.safetyEdge} costGuard ${params.costGuard ? "ON" : "off"}\n`);
 
 const symbols = [...new Set(windows.map((w) => famSymbol(w.family)))];
 const klinesBySym: Record<string, Kline[]> = {};
@@ -318,6 +323,9 @@ const completion = filledShares > 0 ? (2 * mergedShares) / filledShares : 0;
 const makerIncome = settled.reduce((s, r) => s + r.makerIncome, 0);
 const residual = settled.reduce((s, r) => s + r.residualPnl, 0);
 const total = settled.reduce((s, r) => s + r.pnlSettled, 0);
+const lockedMarginSum = settled.reduce((s, r) => s + r.lockedMargin, 0); // the structural check
+const rebatesSum = settled.reduce((s, r) => s + r.rebates, 0);
+const negMarginWindows = settled.filter((r) => r.lockedMargin < -1e-6).length;
 const residRows = settled.filter((r) => r.residUp > 0 || r.residDown > 0);
 const residWins = residRows.filter((r) => r.residualPnl > 0).length;
 
@@ -346,6 +354,8 @@ const summary = {
   windowsWithFills: settled.filter((r) => r.fills > 0).length,
   filledShares: +filledShares.toFixed(1), mergedShares,
   pairCompletion: +completion.toFixed(4),
+  lockedMarginSum: +lockedMarginSum.toFixed(4), rebatesSum: +rebatesSum.toFixed(4),
+  negMarginWindows,
   makerIncome: +makerIncome.toFixed(4), residualSettlePnl: +residual.toFixed(4),
   totalPnl: +total.toFixed(4),
   residualWindows: residRows.length, residualWins: residWins,
@@ -356,6 +366,7 @@ const summary = {
 
 console.log(`\n── G3 aggregate (${CANCEL_MODE}) ──`);
 console.log(`  windows ${summary.windows} (fills in ${summary.windowsWithFills}) · filled shares ${summary.filledShares} · merged sets ${mergedShares} · pair completion ${(completion * 100).toFixed(1)}%`);
+console.log(`  STRUCTURAL: locked margin $${lockedMarginSum.toFixed(2)} (${negMarginWindows} windows with NEGATIVE locked margin) + rebates $${rebatesSum.toFixed(2)}`);
 console.log(`  maker income $${makerIncome.toFixed(2)} (locked margin + rebates) · residual settle $${residual.toFixed(2)} over ${residRows.length} windows (${residWins} wins)`);
 console.log(`  TOTAL $${total.toFixed(2)}  →  ${verdict}`);
 console.log(`  by bucket: ${JSON.stringify(summary.byBucket)}`);

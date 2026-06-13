@@ -126,6 +126,73 @@ describe("planPairQuotes — τ floor (reduce-only endgame)", () => {
   });
 });
 
+describe("planPairQuotes — realized-cost pair guard", () => {
+  const G: PairMakerParams = { ...P, costGuard: true };
+
+  it("caps the COMPLETING bid so a held leg's pair locks >= mergeMargin in realized terms", () => {
+    // hold 50 YES at avg cost 0.60 (expensive). Without the guard the NO bid would
+    // pair at well over (1 - 0.60) = 0.40, locking NEGATIVE margin. The guard caps
+    // NO at toTick(1 - 0.02 - 0.60) = 0.38 → realized pair cost 0.60 + 0.38 = 0.98.
+    // unpaired 40 < cap(50) so the cost-guard reason survives (not overwritten by the unpaired exhaust)
+    const plan = planPairQuotes({
+      pFair: 0.5,
+      yesBook: mid(0.49, 0.51), noBook: mid(0.49, 0.51), // NO touch would tempt a 0.50 bid
+      yesShares: 40, noShares: 0, yesCost: 40 * 0.60,
+      tauSec: 200, params: G,
+    });
+    expect(plan.noBid).not.toBeNull();
+    expect(plan.noBid!.px).toBeLessThanOrEqual(0.38 + 1e-9);
+    // realized pair locks >= margin
+    expect(0.60 + plan.noBid!.px).toBeLessThanOrEqual(1 - G.mergeMargin + 1e-9);
+    expect(plan.noBid!.reason).toMatch(/cost-guard/);
+  });
+
+  it("withdraws the completing side when no tick-valid price survives the cap", () => {
+    // held YES avg cost 0.99 → cap = toTick(1 - 0.02 - 0.99) < 0.01 → NO withdrawn
+    const plan = planPairQuotes({
+      pFair: 0.5,
+      yesBook: mid(0.49, 0.51), noBook: mid(0.49, 0.51),
+      yesShares: 30, noShares: 0, yesCost: 30 * 0.99,
+      tauSec: 200, params: G,
+    });
+    expect(plan.noBid).toBeNull();
+  });
+
+  it("mirror: held NO caps the completing YES bid", () => {
+    const plan = planPairQuotes({
+      pFair: 0.5,
+      yesBook: mid(0.49, 0.51), noBook: mid(0.49, 0.51),
+      yesShares: 0, noShares: 40, noCost: 40 * 0.58,
+      tauSec: 200, params: G,
+    });
+    expect(plan.yesBid).not.toBeNull();
+    expect(plan.yesBid!.px).toBeLessThanOrEqual(0.40 + 1e-9); // toTick(1 - 0.02 - 0.58)
+  });
+
+  it("is a no-op vs baseline when costGuard is off (default)", () => {
+    const inp = {
+      pFair: 0.5,
+      yesBook: mid(0.49, 0.51), noBook: mid(0.49, 0.51),
+      yesShares: 50, noShares: 0, yesCost: 50 * 0.60, tauSec: 200,
+    } as const;
+    const guarded = planPairQuotes({ ...inp, params: G });
+    const baseline = planPairQuotes({ ...inp, params: P });
+    // the guard only tightens — baseline NO bid is >= guarded NO bid
+    expect(baseline.noBid!.px).toBeGreaterThanOrEqual(guarded.noBid!.px - 1e-9);
+  });
+
+  it("does not touch quotes when inventory is flat (no held leg to guard)", () => {
+    const inp = {
+      pFair: 0.5, yesBook: mid(0.49, 0.51), noBook: mid(0.49, 0.51),
+      yesShares: 0, noShares: 0, yesCost: 0, noCost: 0, tauSec: 200,
+    } as const;
+    const guarded = planPairQuotes({ ...inp, params: G });
+    const baseline = planPairQuotes({ ...inp, params: P });
+    expect(guarded.yesBid!.px).toBeCloseTo(baseline.yesBid!.px, 9);
+    expect(guarded.noBid!.px).toBeCloseTo(baseline.noBid!.px, 9);
+  });
+});
+
 describe("settleMerge", () => {
   it("merges complete sets at $1 and locks the margin", () => {
     // 30 YES @ 0.48 avg, 20 NO @ 0.47 avg → 20 sets, margin 20·(1−0.95)=1.00

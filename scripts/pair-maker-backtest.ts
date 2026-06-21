@@ -56,6 +56,9 @@ const OUT = flag("--out");
 const VOL_BARS = Number(flag("--vol-bars", "10")); // paper loop uses max(10, min(60, durationMin)) → 10 for 5m
 const COST_GUARD = process.argv.includes("--cost-guard");
 const FILL_RISK = process.argv.includes("--fill-risk"); // ACTING overlay (widen/pull on adverse tape)
+const FR_COMPLETE = process.argv.includes("--fr-complete"); // complete-don't-pull: keep the balancing leg
+const FR_COMPLETE_THRESH = Number(flag("--fr-complete-thresh", "10")); // imbalance (shares) past which to complete
+const FR_COMPLETE_MAX = Number(flag("--fr-complete-max", "1e9")); // ABOVE this imbalance, let fill_risk pull (heavy = directional, completing = catching a knife)
 const FAMILIES = flag("--families", ""); // comma list to keep, e.g. "eth-updown-5m"; empty = all
 const FR_WINDOW_S = 3600; // longest fill_risk lookback (long_s) — keep this much tape per leg
 
@@ -250,6 +253,32 @@ function runWindow(w: ManifestWindow, klines: Kline[]): WindowResult {
       if (noWant && !ov.noBid) frPullTicks++; else if (noWant && ov.noBid && ov.noBid.px < noWant.px - 1e-9) frWidenTicks++;
       yesWant = ov.yesBid;
       noWant = ov.noBid;
+
+      // ── complete-don't-pull ──────────────────────────────────────────────
+      // The mild-unpaired bucket is the entire loss (v3: −$144 of −$79 net):
+      // fill_risk correctly senses adverse tape and PULLS the at-risk leg, but
+      // when we already hold the OPPOSITE leg, pulling the balancing buy is the
+      // worst move — it locks in unpaired inventory that rides to a losing
+      // settle. Here, when imbalanced past FR_COMPLETE_THRESH, RESTORE the
+      // planned bid on the UNDER-represented (completing) leg so the pair
+      // merges (locks margin) instead of bleeding residual. The over-represented
+      // leg keeps fill_risk's protection. Budget-safe by construction: we only
+      // ever restore planPairQuotes' own bid (which respects the pair budget),
+      // and we cap size to the imbalance so we complete without over-shooting.
+      if (FR_COMPLETE) {
+        const imbalance = invYes - invNo; // >0 excess YES → need NO; <0 → need YES
+        const mag = Math.abs(imbalance);
+        // Only complete in the MILD band: above FR_COMPLETE_MAX the imbalance is
+        // a strongly-directional move → completing buys the losing leg (the heavy
+        // bucket blew up −$84 when this was unbounded); let fill_risk pull there.
+        if (mag > FR_COMPLETE_THRESH && mag <= FR_COMPLETE_MAX) {
+          if (imbalance > 0 && plan.yesBid == null && plan.noBid) {
+            noWant = { px: plan.noBid.px, sz: Math.min(plan.noBid.sz, Math.ceil(imbalance)) };
+          } else if (imbalance < 0 && plan.noBid == null && plan.yesBid) {
+            yesWant = { px: plan.yesBid.px, sz: Math.min(plan.yesBid.sz, Math.ceil(-imbalance)) };
+          }
+        }
+      }
     }
 
     quoteTicks++;

@@ -64,10 +64,51 @@ smartening of the lane does not move the bottom line.
   whole thesis is *completing fills* → PnL is maximally sensitive to exactly the part
   of the model that is assumed, not measured.
 
-## Bottom line
-The merge-maker's edge (if any) is **not** recoverable by smarter inventory
-completion. The profitable real-world wallets (coinman2 +$1.09M) earn the **maker
-spread/rebate as the principal**; a back-of-queue retail replica pays adverse
-selection on the unpaired leg that exceeds the merge margin. Keep the lane as
-forward-paper infrastructure; do not size. (Reproduce: `--fr-complete` flags on
-`scripts/pair-maker-backtest.ts`; this experiment lives on branch `smartmm-experiment`.)
+## Cycle 2 — ex-ante window selection: ALSO a wash (the loss is post-entry)
+If you can't fix the unpaired leg after the fact (cycle 1), the natural follow-up is:
+**don't ENTER the windows that will adversely-select.** Added a no-lookahead ex-ante
+gate (`--skip-open-drift <bps> [--open-window-sec <s>]`): once the opening window
+elapses, freeze the open drift `|spot/strike−1|`; if it exceeds the threshold the
+window is moving directionally → stop quoting it. Swept threshold × open-window IS,
+OOS-validated, adversarially verified.
+
+| config | IS $ | OOS $ | IS paired | IS mild | active |
+|---|---|---|---|---|---|
+| `ref_v3best` (--max-unpaired 10) | −59.95 | −124.80 | +48.8 | −126.8 | 75 |
+| `sel8` (skip >8bps) | **−14.85** | **−109.77** | +30.4 | −63.3 | 61 |
+| `sel12` | −22.27 | −129.68 | +46.8 | −87.2 | 68 |
+| `sel_only_12` (no cap) | −45.54 | −133.94 | +28.1 | −104.3 | 68 |
+
+`sel8` numerically beats v3 on **both** windows — but the adversarial forensics
+**reject it as a noise-band artifact**: (1) the **heavy bucket is invariant (18.08)**
+across every gated config — the gate cuts *zero* of the worst windows (the
+`--max-unpaired` cap already did that); (2) it shrinks mild only by **surrendering
+paired profit faster** (keeps 81% of windows but 62% of paired income → it cuts the
+*profitable* pair-completing windows, because directional-open correlates with
+both-sides-fill); (3) **non-monotone OOS** — tightening sel8→sel12 makes OOS *worse*,
+the fingerprint of overfit, not signal; (4) `sel_only_12` (gate, no cap) is worst on
+both buckets → the **cap does the work, not the gate.** The loss is a **post-open
+phenomenon**: resting inventory is picked off *after* entry, so the opening seconds
+carry ~no information. sel8 "wins" only by being the loosest gate that ≈ does nothing.
+
+## Unified verdict (both cycles)
+A **back-of-queue retail merge-maker is structurally unprofitable.** Its inventory is
+adversely selected **by construction**, and the selection materializes **post-entry**:
+- ❌ post-fill disposition (cycle 1, complete-don't-pull) — acts on already-poisoned
+  inventory → wash.
+- ❌ ex-ante entry gate (cycle 2, skip-open-drift) — can't fire because the poison
+  isn't visible at the open → no-better-than-v3.
+- The only lever that reduces loss is the crude `--max-unpaired` cap (a damage-limiter,
+  not an edge). There is **no positive-PnL config anywhere in the grid** (best is
+  −$14.85 IS / −$109.77 OOS, achieved by trading *less*, not better).
+
+**Every disposition/timing lever is now empirically exhausted.** The edge can only come
+from **queue position** (be at the *front* so you're not the last to fill) or a **maker
+fee/rebate structure** that pays enough to cover the structural adverse selection —
+neither available to a back-of-queue retail taker. This is exactly why the profitable
+wallets (coinman2 +$1.09M) earn the spread/rebate **as principal** with queue priority:
+**the spread is the edge, and you only collect it from the front of the queue.**
+
+Do not allocate. Keep as forward-paper infrastructure only. (Reproduce: `--fr-complete`
+and `--skip-open-drift` flags on `scripts/pair-maker-backtest.ts`, branch
+`smartmm-experiment`.)

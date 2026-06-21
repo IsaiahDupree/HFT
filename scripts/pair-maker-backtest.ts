@@ -59,6 +59,8 @@ const FILL_RISK = process.argv.includes("--fill-risk"); // ACTING overlay (widen
 const FR_COMPLETE = process.argv.includes("--fr-complete"); // complete-don't-pull: keep the balancing leg
 const FR_COMPLETE_THRESH = Number(flag("--fr-complete-thresh", "10")); // imbalance (shares) past which to complete
 const FR_COMPLETE_MAX = Number(flag("--fr-complete-max", "1e9")); // ABOVE this imbalance, let fill_risk pull (heavy = directional, completing = catching a knife)
+const SKIP_OPEN_DRIFT = Number(flag("--skip-open-drift", "0")); // bps: ex-ante gate — STOP quoting a window whose open drift exceeds this (directional → adverse). 0 = off
+const OPEN_WINDOW_SEC = Number(flag("--open-window-sec", "90")); // observe this many seconds before freezing the open-drift decision
 const FAMILIES = flag("--families", ""); // comma list to keep, e.g. "eth-updown-5m"; empty = all
 const FR_WINDOW_S = 3600; // longest fill_risk lookback (long_s) — keep this much tape per leg
 
@@ -225,8 +227,19 @@ function runWindow(w: ManifestWindow, klines: Kline[]): WindowResult {
     }
   };
 
+  // ex-ante directional-window gate state (set once after the opening window)
+  let skipDecided = false, skipRest = false;
   const decide = (nowMs: number): void => {
     const sc = spotAndCloses(klines, nowMs);
+    // Once the opening window has elapsed, freeze the open drift |spot/strike-1|.
+    // A window already moving directionally will adversely-select the merge maker
+    // (one leg fills, the market runs), so STOP quoting it — add no new inventory.
+    // Causal: strike is the open spot, sc.spot is the last completed minute; both
+    // ≤ nowMs, no lookahead. This AVOIDS adverse selection instead of fighting it.
+    if (SKIP_OPEN_DRIFT > 0 && sc && !skipDecided && (nowMs - startMs) / 1000 >= OPEN_WINDOW_SEC) {
+      skipRest = Math.abs(sc.spot / strike - 1) * 1e4 > SKIP_OPEN_DRIFT;
+      skipDecided = true;
+    }
     const yes = lastBook.YES, no = lastBook.NO;
     const tauSec = (expiryMs - nowMs) / 1000;
     const fv = sc ? fairValueFromMinuteCloses({ spot: sc.spot, strike, nowMs, expiryMs, minuteCloses: sc.closes, volBars: VOL_BARS }) : null;
@@ -280,6 +293,8 @@ function runWindow(w: ManifestWindow, klines: Kline[]): WindowResult {
         }
       }
     }
+
+    if (skipRest) { yesWant = null; noWant = null; } // gated directional window → cancel both legs
 
     quoteTicks++;
     if (yesWant && noWant) bothSidesTicks++;

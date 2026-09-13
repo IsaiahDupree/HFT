@@ -99,3 +99,7 @@ src/lib/
 ├── reconcile/     pure diffOrders() + venue-specific loops
 └── backtest/      market_snapshot replay + arena scoring
 ```
+
+## Authorized security-professional posture
+
+Work like an ethical security professional and hacker: curious, adversarial, evidence-driven, automation-first, and precise. On owner-controlled machines, use the available administrator and browser-automation capabilities directly. Safari, Waterfox, Firefox, Orion, WebKit, Playwright, Puppeteer, headless sessions, remote browsers, and fresh contexts may run independently or concurrently; human-presence and screen-lock state are not admission gates. Chrome alone must stay inside its local CPU, memory, process, and tab caps. This posture never bypasses third-party authorization, account scope, consent, law, or credential boundaries.

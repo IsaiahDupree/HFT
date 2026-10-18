@@ -1,0 +1,145 @@
+{
+  "net": "testnet",
+  "market": "ETH-USD",
+  "side": "BUY",
+  "notional": 25,
+  "address": "dydx1gefw05rs79g9mnu2hmwlules3s4vgv3alxuf7q",
+  "subaccountNumber": 0,
+  "clientId": 3312915263,
+  "price": 1882.4,
+  "size": 0.013,
+  "when": "2026-05-28T04:34:56.514Z",
+  "counts": {
+    "pass": 8,
+    "fail": 0,
+    "skip": 0
+  },
+  "steps": [
+    {
+      "name": "load-wallet",
+      "status": "pass",
+      "ms": 168,
+      "detail": {
+        "_truncated": true,
+        "_preview": "{\"wallet\":{\"offlineSigner\":{\"secret\":{\"data\":\"improve indoor blouse feed civil segment reopen blur merry umbrella deal produce latin old mandate relax pyramid craft sad cinnamon refuse witness garbage fossil\"},\"seed\":{\"0\":184,\"1\":166,\"2\":121,\"3\":192,\"4\":186,\"5\":171,\"6\":80,\"7\":114,\"8\":115,\"9\":54,\"10\":187,\"11\":236,\"12\":137,\"13\":51,\"14\":223,\"15\":151,\"16\":66,\"17\":241,\"18\":205,\"19\":233,\"20\":162,\"21\":209,\"22\":196,\"23\":104,\"24\":227,\"25\":61,\"26\":39,\"27\":43,\"28\":149,\"29\":242,\"30\":47,\"31\":23,\"32\":40,\"33\":111,\"34\":31,\"35\":74,\"36\":236,\"37\":6,\"38\":138,\"39\":169,\"40\":92,\"41\":223,\"42\":59,\"43\":27,\"44\":250,\"45\"…"
+      }
+    },
+    {
+      "name": "composite-connect",
+      "status": "pass",
+      "ms": 1159,
+      "detail": {
+        "_truncated": true,
+        "_preview": "{\"gasDenom\":\"USDC\",\"network\":{\"env\":\"testnet\",\"indexerConfig\":{\"restEndpoint\":\"https://indexer.v4testnet.dydx.exchange/\",\"websocketEndpoint\":\"wss://indexer.v4testnet.dydx.exchange/v4/ws\"},\"validatorConfig\":{\"restEndpoint\":\"https://test-dydx-rpc.kingnodes.com\",\"chainId\":\"dydx-testnet-4\",\"denoms\":{\"CHAINTOKEN_DENOM\":\"adv4tnt\",\"USDC_DENOM\":\"ibc/8E27BA2D5493AF5636760E354E46004562C46AB7EC0CC4C1CA14E9E20E2545B5\",\"USDC_GAS_DENOM\":\"uusdc\",\"USDC_DECIMALS\":6,\"CHAINTOKEN_DECIMALS\":18},\"defaultClientMemo\":\"Client Example\"}},\"_indexerClient\":{\"config\":{\"restEndpoint\":\"https://indexer.v4testnet.dydx.exchang…"
+      }
+    },
+    {
+      "name": "indexer.getSubaccount",
+      "status": "pass",
+      "ms": 776,
+      "detail": {
+        "subaccount": {
+          "address": "dydx1gefw05rs79g9mnu2hmwlules3s4vgv3alxuf7q",
+          "subaccountNumber": 0,
+          "equity": "10000",
+          "freeCollateral": "10000",
+          "openPerpetualPositions": {},
+          "assetPositions": {
+            "USDC": {
+              "size": "10000",
+              "symbol": "USDC",
+              "side": "LONG",
+              "assetId": "0",
+              "subaccountNumber": 0
+            }
+          },
+          "marginEnabled": true,
+          "updatedAtHeight": "75255466",
+          "latestProcessedBlockHeight": "75255579"
+        }
+      }
+    },
+    {
+      "name": "indexer.getPerpetualMarkets",
+      "status": "pass",
+      "ms": 477,
+      "detail": {
+        "markets": {
+          "ETH-USD": {
+            "clobPairId": "1",
+            "ticker": "ETH-USD",
+            "status": "ACTIVE",
+            "oraclePrice": "1981.446341",
+            "priceChange24H": "-90.17866",
+            "volume24H": "2741.9349",
+            "trades24H": 1234,
+            "nextFundingRate": "0",
+            "initialMarginFraction": "0.02",
+            "maintenanceMarginFraction": "0.012",
+            "openInterest": "1045.607",
+            "atomicResolution": -9,
+            "quantumConversionExponent": -9,
+            "tickSize": "0.1",
+            "stepSize": "0.001",
+            "stepBaseQuantums": 1000000,
+            "subticksPerTick": 100000,
+            "marketType": "CROSS",
+            "openInterestLowerCap": "0",
+            "openInterestUpperCap": "0",
+            "baseOpenInterest": "965.58",
+            "defaultFundingRate1H": "0"
+          }
+        }
+      }
+    },
+    {
+      "name": "composite.placeOrder",
+      "status": "pass",
+      "ms": 2165,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "indexer.getSubaccountOrders (find placed)",
+      "status": "pass",
+      "ms": 501,
+      "detail": {
+        "id": "98c0b511-140a-5f10-8bef-edc311dd4053",
+        "subaccountId": "ff73dff3-c2d2-5675-ad9a-924d9a2c0095",
+        "clientId": "3312915263",
+        "clobPairId": "1",
+        "side": "BUY",
+        "size": "0.013",
+        "totalFilled": "0",
+        "price": "1882.4",
+        "type": "LIMIT",
+        "status": "OPEN",
+        "timeInForce": "GTT",
+        "reduceOnly": false,
+        "orderFlags": "64",
+        "goodTilBlockTime": "2026-05-28T04:36:50.000Z",
+        "createdAtHeight": "75255582",
+        "clientMetadata": "0",
+        "updatedAt": "2026-05-28T04:34:54.632Z",
+        "updatedAtHeight": "75255582",
+        "orderRouterAddress": "",
+        "postOnly": true,
+        "ticker": "ETH-USD",
+        "subaccountNumber": 0
+      }
+    },
+    {
+      "name": "composite.cancelOrder",
+      "status": "pass",
+      "ms": 3114,
+      "detail": "[object Object]"
+    },
+    {
+      "name": "indexer.getSubaccountOrders (verify cancel)",
+      "status": "pass",
+      "ms": 486,
+      "detail": {
+        "status": "CANCELED"
+      }
+    }
+  ]
+}

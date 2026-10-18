@@ -1,0 +1,35 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./src ./scripts ./package.json",
+  "functions": {
+    "src/app/api/**/*.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "src/app/api/venue/submit/route.ts": {
+      "maxDuration": 120,
+      "memory": 1024
+    },
+    "src/app/api/risk/halt/route.ts": {
+      "maxDuration": 120,
+      "memory": 1024
+    },
+    "src/app/api/coinbase/sweep/route.ts": {
+      "maxDuration": 300,
+      "memory": 1024
+    },
+    "src/app/api/polymarket/sweep/route.ts": {
+      "maxDuration": 300,
+      "memory": 1024
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/venue/health",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}

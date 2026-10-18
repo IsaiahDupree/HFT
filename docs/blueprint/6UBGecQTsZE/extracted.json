@@ -1,0 +1,8 @@
+{
+  "video_id": "6UBGecQTsZE",
+  "unique_screens": 88,
+  "content_frames": 21,
+  "ocr_model": "gpt-4o-mini",
+  "synth_model": "gpt-4.1",
+  "has_transcript": true
+}

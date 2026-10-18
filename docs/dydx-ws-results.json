@@ -1,0 +1,67 @@
+{
+  "net": "testnet",
+  "market": "BTC-USD",
+  "durationSec": 8,
+  "ms": 8089,
+  "counts": {
+    "connected": 1,
+    "subscribed": 4,
+    "error": 0,
+    "pong": 0,
+    "v4_markets": 5,
+    "v4_trades": 0,
+    "v4_orderbook": 0,
+    "v4_candles": 0,
+    "other": 0
+  },
+  "rate_per_sec": {
+    "v4_markets": 0.62,
+    "v4_trades": 0,
+    "v4_orderbook": 0,
+    "v4_candles": 0
+  },
+  "sampleChannels": [
+    "v4_markets"
+  ],
+  "firstSamples": {
+    "v4_markets": {
+      "type": "channel_batch_data",
+      "connection_id": "b872238e-b01d-4e48-aa47-919f26445e86",
+      "message_id": 5,
+      "channel": "v4_markets",
+      "version": "1.0.0",
+      "contents": [
+        {
+          "oraclePrices": {
+            "ADA-USD": {
+              "oraclePrice": "0.229678908",
+              "effectiveAt": "2026-05-28T04:31:46.118Z",
+              "effectiveAtHeight": "75255356",
+              "marketId": 6
+            }
+          }
+        },
+        {
+          "oraclePrices": {
+            "WLD-USD": {
+              "oraclePrice": "0.321037227",
+              "effectiveAt": "2026-05-28T04:31:46.118Z",
+              "effectiveAtHeight": "75255356",
+              "marketId": 21
+            }
+          }
+        },
+        {
+          "oraclePrices": {
+            "USDT-USDC": {
+              "oraclePrice": "0.998851323",
+              "effectiveAt": "2026-05-28T04:31:46.118Z",
+              "effectiveAtHeight": "75255356",
+              "marketId": 9003
+            }
+          }
+        }
+      ]
+    }
+  }
+}

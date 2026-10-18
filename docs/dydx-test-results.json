@@ -1,0 +1,194 @@
+{
+  "base": "https://indexer.dydx.trade/v4",
+  "market": "BTC-USD",
+  "network": "mainnet",
+  "when": "2026-05-28T03:59:05.233Z",
+  "counts": {
+    "pass": 12,
+    "fail": 0,
+    "skip": 0
+  },
+  "results": [
+    {
+      "category": "utility",
+      "name": "GET /time",
+      "method": "GET",
+      "url": "https://indexer.dydx.trade/v4/time",
+      "status": "pass",
+      "http": 200,
+      "ms": 1154,
+      "sample": {
+        "iso": "2026-05-28T03:58:57.391Z",
+        "epoch": 1779940737.391
+      }
+    },
+    {
+      "category": "utility",
+      "name": "GET /height",
+      "method": "GET",
+      "url": "https://indexer.dydx.trade/v4/height",
+      "status": "pass",
+      "http": 200,
+      "ms": 714,
+      "sample": {
+        "height": "90860757",
+        "time": "2026-05-28T03:58:56.966Z"
+      }
+    },
+    {
+      "category": "markets",
+      "name": "GET /perpetualMarkets",
+      "method": "GET",
+      "url": "https://indexer.dydx.trade/v4/perpetualMarkets",
+      "status": "pass",
+      "http": 200,
+      "ms": 460,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"markets\":{\"BTC-USD\":{\"clobPairId\":\"0\",\"ticker\":\"BTC-USD\",\"status\":\"ACTIVE\",\"oraclePrice\":\"73167.61532\",\"priceChange24H\":\"-2410.14636\",\"volume24H\":\"74617780.1325\",\"trades24H\":20389,\"nextFundingRate\":\"-0.00004253813559322034\",\"initialMarginFraction\":\"0.02\",\"maintenanceMarginFraction\":\"0.012\",\"openInterest\":\"486.1915\",\"atomicResolution\":-10,\"quantumConversionExponent\":-9,\"tickSize\":\"1\",\"stepSize\":\"0.0001\",\"stepBaseQuantums\":1000000,\"subticksPerTick\":100000,\"marketType\":\"CROSS\",\"openInterestLowerCap\":\"0\",\"openInterestUpperCap\":\"0\",\"baseOpenInterest\":\"782.0931\",\"defaultFundingRate1H\":\"0\"},\"ETH-USD\":{\"clobPairId\":\"1\",\"ticker\":\"ETH-USD\",\"status\":\"ACTIVE\",\"oraclePrice\":\"1980.188273\",\"priceChange24H\":\"-87.342904\",\"volume24H\":\"17247741.7443\",\"trades24H\":4585,\"nextFundingRate\":\"-0.00001836864406779661\",\"initialMarginFraction\":\"0.02\",\"maintenanceMarginFraction\":\"0.012\",\"openInterest\":\"8939.198\",\"atomicResolution\":-9,\"quantumConversionExponent\":-9,\"tickSize\":\"0.1\",\"stepSize\":\"0.001\",\"stepBaseQuantums\":1000000,\"subticksPerTick\":100000,\"marketType\":\"CROSS\",\"openInterestLowerCap\":\"0\",\"openInterestUpperCap\":\"0\",\"baseOpenInterest\":\"13993.985\",\"defaultFundingRate1H\":\"0\"},\"LINK-USD\":{\"clobPairId\":\"2…"
+      }
+    },
+    {
+      "category": "markets",
+      "name": "GET /perpetualMarkets?market=",
+      "method": "GET",
+      "url": "https://indexer.dydx.trade/v4/perpetualMarkets?market=BTC-USD",
+      "status": "pass",
+      "http": 200,
+      "ms": 1099,
+      "sample": {
+        "markets": {
+          "BTC-USD": {
+            "clobPairId": "0",
+            "ticker": "BTC-USD",
+            "status": "ACTIVE",
+            "oraclePrice": "73167.61532",
+            "priceChange24H": "-2410.14636",
+            "volume24H": "74617780.1325",
+            "trades24H": 20389,
+            "nextFundingRate": "-0.00004253813559322034",
+            "initialMarginFraction": "0.02",
+            "maintenanceMarginFraction": "0.012",
+            "openInterest": "486.1915",
+            "atomicResolution": -10,
+            "quantumConversionExponent": -9,
+            "tickSize": "1",
+            "stepSize": "0.0001",
+            "stepBaseQuantums": 1000000,
+            "subticksPerTick": 100000,
+            "marketType": "CROSS",
+            "openInterestLowerCap": "0",
+            "openInterestUpperCap": "0",
+            "baseOpenInterest": "782.0931",
+            "defaultFundingRate1H": "0"
+          }
+        }
+      }
+    },
+    {
+      "category": "markets",
+      "name": "GET /orderbooks/perpetualMarket/BTC-USD",
+      "method": "GET",
+      "url": "https://indexer.dydx.trade/v4/orderbooks/perpetualMarket/BTC-USD",
+      "status": "pass",
+      "http": 200,
+      "ms": 1012,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"bids\":[{\"price\":\"73146\",\"size\":\"0.0015\"},{\"price\":\"73144\",\"size\":\"0.2931\"},{\"price\":\"73143\",\"size\":\"0.2983\"},{\"price\":\"73142\",\"size\":\"0.3072\"},{\"price\":\"73137\",\"size\":\"0.027\"},{\"price\":\"73136\",\"size\":\"0.0841\"},{\"price\":\"73135\",\"size\":\"0.2817\"},{\"price\":\"73131\",\"size\":\"0.027\"},{\"price\":\"73126\",\"size\":\"0.017\"},{\"price\":\"73125\",\"size\":\"0.03\"},{\"price\":\"73124\",\"size\":\"0.027\"},{\"price\":\"73122\",\"size\":\"0.0306\"},{\"price\":\"73121\",\"size\":\"0.1025\"},{\"price\":\"73120\",\"size\":\"0.0387\"},{\"price\":\"73118\",\"size\":\"0.027\"},{\"price\":\"73117\",\"size\":\"0.1025\"},{\"price\":\"73112\",\"size\":\"0.027\"},{\"price\":\"73107\",\"size\":\"0.027\"},{\"price\":\"73106\",\"size\":\"0.1633\"},{\"price\":\"73105\",\"size\":\"0.5471\"},{\"price\":\"73101\",\"size\":\"0.027\"},{\"price\":\"73097\",\"size\":\"0.027\"},{\"price\":\"73094\",\"size\":\"0.5472\"},{\"price\":\"73093\",\"size\":\"2.6461\"},{\"price\":\"73092\",\"size\":\"2.6191\"},{\"price\":\"73091\",\"size\":\"0.0003\"},{\"price\":\"73090\",\"size\":\"5.2382\"},{\"price\":\"73069\",\"size\":\"0.0547\"},{\"price\":\"73057\",\"size\":\"30.3348\"},{\"price\":\"73037\",\"size\":\"0.0274\"},{\"price\":\"73019\",\"size\":\"2.6191\"},{\"price\":\"73018\",\"size\":\"2.6191\"},{\"price\":\"73016\",\"size\":\"5.2382\"},{\"price\":\"72946\",\"size\":\"2.6191\"},{\"price\":\"72945\",\"size\":\"2.6191\"},{\"price\":\"7…"
+      }
+    },
+    {
+      "category": "markets",
+      "name": "GET /trades/perpetualMarket/BTC-USD",
+      "method": "GET",
+      "url": "https://indexer.dydx.trade/v4/trades/perpetualMarket/BTC-USD?limit=50",
+      "status": "pass",
+      "http": 200,
+      "ms": 982,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"trades\":[{\"id\":\"056a6cd10000000200000002\",\"side\":\"BUY\",\"size\":\"0.0013\",\"price\":\"73156\",\"type\":\"LIMIT\",\"createdAt\":\"2026-05-28T03:58:54.788Z\",\"createdAtHeight\":\"90860753\"},{\"id\":\"056a6cc70000000200000002\",\"side\":\"SELL\",\"size\":\"0.0003\",\"price\":\"73138\",\"type\":\"LIMIT\",\"createdAt\":\"2026-05-28T03:58:49.143Z\",\"createdAtHeight\":\"90860743\"},{\"id\":\"056a6cbf0000000200000002\",\"side\":\"SELL\",\"size\":\"0.0041\",\"price\":\"73145\",\"type\":\"LIMIT\",\"createdAt\":\"2026-05-28T03:58:44.615Z\",\"createdAtHeight\":\"90860735\"},{\"id\":\"056a6caa0000000200000002\",\"side\":\"SELL\",\"size\":\"0.027\",\"price\":\"73125\",\"type\":\"LIMIT\",\"createdAt\":\"2026-05-28T03:58:32.576Z\",\"createdAtHeight\":\"90860714\"},{\"id\":\"056a6ca70000000200000002\",\"side\":\"SELL\",\"size\":\"0.4\",\"price\":\"73122\",\"type\":\"LIMIT\",\"createdAt\":\"2026-05-28T03:58:31.001Z\",\"createdAtHeight\":\"90860711\"},{\"id\":\"056a6ca5000000020000002c\",\"side\":\"BUY\",\"size\":\"0.0101\",\"price\":\"73151\",\"type\":\"LIMIT\",\"createdAt\":\"2026-05-28T03:58:30.037Z\",\"createdAtHeight\":\"90860709\"},{\"id\":\"056a6ca50000000200000029\",\"side\":\"BUY\",\"size\":\"0.027\",\"price\":\"73151\",\"type\":\"LIMIT\",\"createdAt\":\"2026-05-28T03:58:30.037Z\",\"createdAtHeight\":\"90860709\"},{\"id\":\"056a6ca50000000200000026\",\"side\":\"BUY\",\"size\":\"0.…"
+      }
+    },
+    {
+      "category": "markets",
+      "name": "GET /candles/perpetualMarkets/BTC-USD",
+      "method": "GET",
+      "url": "https://indexer.dydx.trade/v4/candles/perpetualMarkets/BTC-USD?resolution=1MIN&limit=60",
+      "status": "pass",
+      "http": 200,
+      "ms": 1391,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"candles\":[{\"startedAt\":\"2026-05-28T03:59:00.000Z\",\"ticker\":\"BTC-USD\",\"resolution\":\"1MIN\",\"low\":\"73156\",\"high\":\"73156\",\"open\":\"73156\",\"close\":\"73156\",\"baseTokenVolume\":\"0\",\"usdVolume\":\"0\",\"trades\":0,\"startingOpenInterest\":\"486.1902\",\"orderbookMidPriceOpen\":\"73119\",\"orderbookMidPriceClose\":\"73119\"},{\"startedAt\":\"2026-05-28T03:58:00.000Z\",\"ticker\":\"BTC-USD\",\"resolution\":\"1MIN\",\"low\":\"73042\",\"high\":\"73156\",\"open\":\"73064\",\"close\":\"73156\",\"baseTokenVolume\":\"1.5292\",\"usdVolume\":\"111836.5661\",\"trades\":31,\"startingOpenInterest\":\"486.4444\",\"orderbookMidPriceOpen\":\"73017.5\",\"orderbookMidPriceClose\":\"73119\"},{\"startedAt\":\"2026-05-28T03:57:00.000Z\",\"ticker\":\"BTC-USD\",\"resolution\":\"1MIN\",\"low\":\"72956\",\"high\":\"73095\",\"open\":\"72956\",\"close\":\"73075\",\"baseTokenVolume\":\"0.5735\",\"usdVolume\":\"41883.2467\",\"trades\":35,\"startingOpenInterest\":\"486.8041\",\"orderbookMidPriceOpen\":\"73017\",\"orderbookMidPriceClose\":\"73017.5\"},{\"startedAt\":\"2026-05-28T03:56:00.000Z\",\"ticker\":\"BTC-USD\",\"resolution\":\"1MIN\",\"low\":\"72952\",\"high\":\"73074\",\"open\":\"73074\",\"close\":\"72952\",\"baseTokenVolume\":\"2.7631\",\"usdVolume\":\"201725.5946\",\"trades\":56,\"startingOpenInterest\":\"486.2310\",\"orderbookMidPriceOpen\":\"73079.75\",\"orderbookMidPri…"
+      }
+    },
+    {
+      "category": "markets",
+      "name": "GET /historicalFunding/BTC-USD",
+      "method": "GET",
+      "url": "https://indexer.dydx.trade/v4/historicalFunding/BTC-USD?limit=10",
+      "status": "pass",
+      "http": 200,
+      "ms": 1124,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"historicalFunding\":[{\"ticker\":\"BTC-USD\",\"rate\":\"-0.000019\",\"price\":\"74195.11586\",\"effectiveAtHeight\":\"90854237\",\"effectiveAt\":\"2026-05-28T03:00:00.448Z\"},{\"ticker\":\"BTC-USD\",\"rate\":\"-0.000034\",\"price\":\"74248.27206\",\"effectiveAtHeight\":\"90847524\",\"effectiveAt\":\"2026-05-28T02:00:00.389Z\"},{\"ticker\":\"BTC-USD\",\"rate\":\"-0.00003225\",\"price\":\"74451.80783\",\"effectiveAtHeight\":\"90840964\",\"effectiveAt\":\"2026-05-28T01:00:00.415Z\"},{\"ticker\":\"BTC-USD\",\"rate\":\"-0.000038375\",\"price\":\"74378.94861\",\"effectiveAtHeight\":\"90834584\",\"effectiveAt\":\"2026-05-28T00:00:00.535Z\"},{\"ticker\":\"BTC-USD\",\"rate\":\"0\",\"price\":\"74328.60827\",\"effectiveAtHeight\":\"90828183\",\"effectiveAt\":\"2026-05-27T23:00:00.391Z\"},{\"ticker\":\"BTC-USD\",\"rate\":\"0.000017375\",\"price\":\"74400.36955\",\"effectiveAtHeight\":\"90821797\",\"effectiveAt\":\"2026-05-27T22:00:00.661Z\"},{\"ticker\":\"BTC-USD\",\"rate\":\"0.0000105\",\"price\":\"75174.88808\",\"effectiveAtHeight\":\"90815341\",\"effectiveAt\":\"2026-05-27T21:00:00.240Z\"},{\"ticker\":\"BTC-USD\",\"rate\":\"-0.000000375\",\"price\":\"74931.90017\",\"effectiveAtHeight\":\"90808918\",\"effectiveAt\":\"2026-05-27T20:00:00.240Z\"},{\"ticker\":\"BTC-USD\",\"rate\":\"-0.000012\",\"price\":\"74883.54315\",\"effectiveAtHeight\":\"90802477\",\"effectiveAt…"
+      }
+    },
+    {
+      "category": "markets",
+      "name": "GET /sparklines?timePeriod=ONE_DAY",
+      "method": "GET",
+      "url": "https://indexer.dydx.trade/v4/sparklines?timePeriod=ONE_DAY",
+      "status": "pass",
+      "http": 200,
+      "ms": 516,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"BTC-USD\":[\"73149\",\"74168\",\"74207\",\"74446\",\"74348\",\"74293\",\"74390\",\"75195\",\"74955\",\"74922\",\"74741\",\"75230\",\"75198\",\"74913\",\"74942\",\"75581\",\"75655\",\"75788\",\"75801\",\"75743\",\"75859\",\"75709\",\"75579\",\"75473\"],\"ETH-USD\":[\"1977.4\",\"2013.7\",\"2017.1\",\"2025.3\",\"2021.5\",\"2022.1\",\"2018.1\",\"2061.6\",\"2054.2\",\"2053.2\",\"2049.1\",\"2067\",\"2068\",\"2060.4\",\"2060.9\",\"2075.1\",\"2076.9\",\"2076.5\",\"2080.7\",\"2080.7\",\"2080.3\",\"2076.3\",\"2074.7\",\"2069.6\"],\"LINK-USD\":[\"8.877\",\"9.096\",\"9.149\",\"9.137\",\"9.143\",\"9.175\",\"9.176\",\"9.341\",\"9.313\",\"9.267\",\"9.261\",\"9.369\",\"9.471\",\"9.352\",\"9.317\",\"9.421\",\"9.348\",\"9.347\",\"9.352\",\"9.397\",\"9.416\",\"9.418\",\"9.413\",\"9.382\"],\"MATIC-USD\":[\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.40179598148148148148\",\"0.…"
+      }
+    },
+    {
+      "category": "vaults",
+      "name": "GET /vault/v1/megavault/positions",
+      "method": "GET",
+      "url": "https://indexer.dydx.trade/v4/vault/v1/megavault/positions",
+      "status": "pass",
+      "http": 200,
+      "ms": 1358,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"positions\":[{\"ticker\":\"1INCH-USD\",\"assetPosition\":{\"size\":\"9165.595334\",\"symbol\":\"USDC\",\"side\":\"LONG\",\"assetId\":\"0\",\"subaccountNumber\":0},\"equity\":\"9165.595334\"},{\"ticker\":\"2Z-USD\",\"assetPosition\":{\"size\":\"8890.562032\",\"symbol\":\"USDC\",\"side\":\"LONG\",\"assetId\":\"0\",\"subaccountNumber\":0},\"equity\":\"8890.562032\"},{\"ticker\":\"ACX-USD\",\"assetPosition\":{\"size\":\"6041.684579\",\"symbol\":\"USDC\",\"side\":\"LONG\",\"assetId\":\"0\",\"subaccountNumber\":0},\"equity\":\"6041.684579\"},{\"ticker\":\"ADA-USD\",\"assetPosition\":{\"size\":\"17521.326271\",\"symbol\":\"USDC\",\"side\":\"LONG\",\"assetId\":\"0\",\"subaccountNumber\":0},\"equity\":\"17521.326271\"},{\"ticker\":\"AERGO-USD\",\"assetPosition\":{\"size\":\"5609.986181\",\"symbol\":\"USDC\",\"side\":\"LONG\",\"assetId\":\"0\",\"subaccountNumber\":0},\"equity\":\"5609.986181\"},{\"ticker\":\"AERO-USD\",\"assetPosition\":{\"size\":\"12013.768451\",\"symbol\":\"USDC\",\"side\":\"LONG\",\"assetId\":\"0\",\"subaccountNumber\":0},\"equity\":\"12013.768451\"},{\"ticker\":\"AEVO-USD\",\"assetPosition\":{\"size\":\"6278.735503\",\"symbol\":\"USDC\",\"side\":\"LONG\",\"assetId\":\"0\",\"subaccountNumber\":0},\"equity\":\"6278.735503\"},{\"ticker\":\"AI16Z-USD\",\"assetPosition\":{\"size\":\"19580.656071\",\"symbol\":\"USDC\",\"side\":\"LONG\",\"assetId\":\"0\",\"subaccountNumber\":0},\"equity\":\"1958…"
+      }
+    },
+    {
+      "category": "vaults",
+      "name": "GET /vault/v1/megavault/historicalPnl?resolution=day",
+      "method": "GET",
+      "url": "https://indexer.dydx.trade/v4/vault/v1/megavault/historicalPnl?resolution=day",
+      "status": "pass",
+      "http": 200,
+      "ms": 1394,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"megavaultPnl\":[{\"equity\":\"2534802\",\"totalPnl\":\"4604088\",\"netTransfers\":\"0\",\"createdAt\":\"2026-02-28T00:18:32.000Z\",\"blockHeight\":\"77903839\",\"blockTime\":\"2026-02-28T00:18:31.000Z\"},{\"equity\":\"2537049\",\"totalPnl\":\"4604444\",\"netTransfers\":\"0\",\"createdAt\":\"2026-03-01T00:12:28.000Z\",\"blockHeight\":\"78044828\",\"blockTime\":\"2026-03-01T00:12:27.000Z\"},{\"equity\":\"2535840\",\"totalPnl\":\"4604734\",\"netTransfers\":\"500\",\"createdAt\":\"2026-03-02T00:35:44.000Z\",\"blockHeight\":\"78187855\",\"blockTime\":\"2026-03-02T00:35:43.000Z\"},{\"equity\":\"2483537\",\"totalPnl\":\"4605035\",\"netTransfers\":\"0\",\"createdAt\":\"2026-03-03T00:09:21.000Z\",\"blockHeight\":\"78325757\",\"blockTime\":\"2026-03-03T00:09:20.000Z\"},{\"equity\":\"2496799\",\"totalPnl\":\"4606107\",\"netTransfers\":\"0\",\"createdAt\":\"2026-03-04T00:01:26.000Z\",\"blockHeight\":\"78469137\",\"blockTime\":\"2026-03-04T00:01:24.000Z\"},{\"equity\":\"2317071\",\"totalPnl\":\"4607055\",\"netTransfers\":\"0\",\"createdAt\":\"2026-03-05T00:10:31.000Z\",\"blockHeight\":\"78611694\",\"blockTime\":\"2026-03-05T00:10:30.000Z\"},{\"equity\":\"2317289\",\"totalPnl\":\"4607343\",\"netTransfers\":\"0\",\"createdAt\":\"2026-03-06T00:12:58.000Z\",\"blockHeight\":\"78752574\",\"blockTime\":\"2026-03-06T00:12:57.000Z\"},{\"equity\":\"2319785\",\"totalPnl\":\"4…"
+      }
+    },
+    {
+      "category": "compliance",
+      "name": "GET /compliance/screen/dydx14zzueazeh0hj67cghhf9jypslcf9sh2n5k6art",
+      "method": "GET",
+      "url": "https://indexer.dydx.trade/v4/compliance/screen/dydx14zzueazeh0hj67cghhf9jypslcf9sh2n5k6art",
+      "status": "pass",
+      "http": 200,
+      "ms": 1073,
+      "sample": {
+        "status": "COMPLIANT",
+        "reason": null,
+        "updatedAt": "2025-04-28T07:45:32.592Z"
+      }
+    }
+  ]
+}

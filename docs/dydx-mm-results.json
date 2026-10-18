@@ -1,0 +1,138 @@
+{
+  "net": "testnet",
+  "market": "ETH-USD",
+  "cycles": 5,
+  "runtimeMs": 29422,
+  "fills": 5,
+  "realisedUsd": -0.0087,
+  "feesUsd": 0.0054,
+  "unrealisedUsd": 0.0691,
+  "totalUsd": 0.0604,
+  "finalPosition": 0.021,
+  "finalVwap": 2012.6857142857143,
+  "finalOracle": 2015.975621,
+  "recentCycles": [
+    {
+      "cycle": 1,
+      "ts": 1780113664405,
+      "oracle": 2015.975621,
+      "microprice": null,
+      "fair": 2015.975621,
+      "obi": 0,
+      "quotedSpreadBps": null,
+      "widenMult": 1,
+      "paused": false,
+      "position": 0.003,
+      "inventoryUsd": 6.047926863000001,
+      "bid": 2012.8,
+      "ask": 2018.9,
+      "skewBps": -0.6047926863000002,
+      "ms": 3751
+    },
+    {
+      "cycle": 2,
+      "ts": 1780113668020,
+      "oracle": 2015.975621,
+      "microprice": null,
+      "fair": 2015.975621,
+      "obi": -1,
+      "quotedSpreadBps": null,
+      "widenMult": 1,
+      "paused": false,
+      "position": 0.009,
+      "inventoryUsd": 18.143780589,
+      "bid": 2012.6,
+      "ask": 2018.9,
+      "skewBps": -1.8143780589,
+      "ms": 2355
+    },
+    {
+      "cycle": 3,
+      "ts": 1780113670948,
+      "oracle": 2015.975621,
+      "microprice": 2015.75,
+      "fair": 2015.975621,
+      "obi": 0,
+      "quotedSpreadBps": 31.253875728637887,
+      "widenMult": 1,
+      "paused": false,
+      "position": 0.009,
+      "inventoryUsd": 18.143780589,
+      "bid": 2012.6,
+      "ask": 2018.9,
+      "skewBps": -1.8143780589,
+      "ms": 280
+    },
+    {
+      "cycle": 4,
+      "ts": 1780113675952,
+      "oracle": 2015.975621,
+      "microprice": 2015.75,
+      "fair": 2015.975621,
+      "obi": 0,
+      "quotedSpreadBps": 31.253875728637887,
+      "widenMult": 1,
+      "paused": false,
+      "position": 0.009,
+      "inventoryUsd": 18.143780589,
+      "bid": 2012.6,
+      "ask": 2018.9,
+      "skewBps": -1.8143780589,
+      "ms": 274
+    },
+    {
+      "cycle": 5,
+      "ts": 1780113682746,
+      "oracle": 2015.975621,
+      "microprice": null,
+      "fair": 2015.975621,
+      "obi": -1,
+      "quotedSpreadBps": null,
+      "widenMult": 1,
+      "paused": false,
+      "position": 0.021,
+      "inventoryUsd": 42.335488041000005,
+      "bid": 2012.1,
+      "ask": 2018.9,
+      "skewBps": -4.233548804100001,
+      "ms": 2055
+    }
+  ],
+  "recentFills": [
+    {
+      "side": "SELL",
+      "price": 2011.7,
+      "size": 0.001,
+      "feeUsd": 0.000202,
+      "ts": 1780020246757
+    },
+    {
+      "side": "SELL",
+      "price": 2011.7,
+      "size": 0.001,
+      "feeUsd": 0.000202,
+      "ts": 1780020246757
+    },
+    {
+      "side": "SELL",
+      "price": 2011.7,
+      "size": 0.001,
+      "feeUsd": 0.000202,
+      "ts": 1780020246757
+    },
+    {
+      "side": "BUY",
+      "price": 2012.8,
+      "size": 0.012,
+      "feeUsd": 0.002416,
+      "ts": 1780113671592
+    },
+    {
+      "side": "BUY",
+      "price": 2012.6,
+      "size": 0.012,
+      "feeUsd": 0.002416,
+      "ts": 1780113686912
+    }
+  ]
+}

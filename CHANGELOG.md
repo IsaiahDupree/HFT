@@ -1,0 +1,150 @@
+# Changelog
+
+All notable changes to this project. Format follows [Keep a Changelog](https://keepachangelog.com).
+Versions follow [SemVer](https://semver.org).
+
+## [Unreleased]
+
+### Added — reboot-durable scheduling via launchd (cron can't read ~/Documents)
+
+macOS TCC denies background daemons read access to `~/Documents` (a freshly-loaded LaunchAgent
+gets none; even cron is blocked from agent-created files there). So the durable loop runs from a
+**runtime checkout outside `~/Documents`** (`~/hft-live`) via a launchd LaunchAgent
+(`scripts/launchd/com.isaiahdupree.hft.arena.plist`): one arena cycle every 5 min + at load,
+reboot-durable, logs to `/tmp/hft-arena.log`. Develop/push from the Documents checkout; the runtime
+one just `git pull`s and runs. (`arena-cron.sh`'s crontab note is retained for hosts where cron has
+Full Disk Access and the repo isn't agent-provenanced.)
+
+### Added — allocator can mint sim capsules + a continuous arena loop
+
+- **`arena:allocate --commit --create-capsules`** — turns the funded set into real (but still
+  **sim/`draft`**) capsule rows: one capsule per funded agent, sized to its grant, venue inferred
+  from the genome kind (cb_* → coinbase, poly_* → polymarket), bound to the `paper_agent_id`.
+  Idempotent (re-running resizes). Capsules stay `draft` — activation toward real money remains a
+  separate operator action gated by `championship.activateCapsule`'s pre-flight backtest.
+- **`scripts/arena-cron.sh`** — one lock-guarded cycle: `worker:snapshot` (real data) + `arena:tick`
+  (score). **`scripts/arena-loop.sh`** — runs a cycle every N seconds (nohup-friendly). A 5-min
+  cadence breeds a new generation ~every 4h (auto-evolve at 50 ticks), so real fitness accrues and
+  the allocator concentrates capital on proven agents over time. Crontab line documented in the
+  script header.
+
+### Fixed — fresh-DB schema drift (arena couldn't run / Polymarket data dropped)
+
+`schema.sql` had drifted from the runtime schema the code expects, so a freshly-built DB (new
+clone / CI) failed across the data → score → allocate path. Fixed at the source (schema.sql for
+fresh DBs + idempotent `ALTER` migrations in `db/client.ts` for existing DBs, matching the
+existing migration pattern):
+- `market_snapshots.category` — written by the snapshot worker + read by the arena TickContext;
+  its absence dropped **all** Polymarket snapshots ("no column named category").
+- `realtime_ticks` table — read by `buildLiveTickContext`; never created on fresh DBs.
+- `capsules.paper_agent_id` — the arena↔capsule binding (championship/auto-promote/live-capsule).
+- `paper_generations.tick_count` — the auto-evolve tick counter.
+With these, `npm run worker:snapshot` pulls real data (Polymarket + Coinbase + short binaries +
+candles) and `npm run arena:tick` scores the population — verified end-to-end from a fresh DB.
+
+### Changed — hft:pipeline now obtains data first
+
+`scripts/hft-pipeline.ts` gains a leading `worker:snapshot` step (`--snaps N`) so one
+`npm run hft:pipeline` does **obtain-data → seed → score → allocate**. With live data + real
+scores the allocator funds only proven positive-fitness agents; offline it falls back to an even
+split so the wiring stays visible.
+
+### Added — Scale-layer wiring: dispatch + genome-grid arena seed + one pipeline
+
+- **trader-llm registered in the research loop** — `scripts/research-loop.ts` gains
+  `maybeInstallLlmTrader()` (env-gated `TRADER_LLM=1`, auth-checked), registering `traderLlmEvaluator`
+  under the `llm-trader` strategy slug. Mirrors `maybeInstallLlmOracle`; inert by default.
+- **`strategy-factory --arena`** — genome-grid mode over the arena's paper-agent kinds (via each kind's
+  `PARAM_BOUNDS`): **131,976** genome variants across 8 kinds. `--arena --seed [--limit N]` seeds a
+  bounded, **diverse** (round-robin across kinds) batch of `paper_agents` so `arena:tick` can score
+  them and `arena:allocate` can fund them.
+- **`scripts/hft-pipeline.ts`** (`npm run hft:pipeline`) — chains factory → `arena:tick` (best-effort;
+  skipped with a note when no market snapshots) → `arena:allocate --commit` in one command. Verified
+  end-to-end on a fresh DB: 40 diverse agents seeded, allocator funded the top 10 with rationale +
+  evolution_log audit. `tsc --noEmit` clean, `npm run build` green.
+
+### Added — Scale layer: trader-llm agent + strategy factory + capital allocator
+
+- **`src/lib/agents/trader-llm.ts`** — an LLM Evaluator that can ACT: given its capsule + the
+  current signals it asks Claude (OAuth-first, cached, JSON-schema, like `oracle-llm`) for one
+  trade decision and returns a `submit-order` verdict. Never touches a venue directly — the intent
+  flows through `ExecutionRouter` (halt → capsule → risk gate). Inert until registered in the
+  research-loop dispatch. Driven by `prompts/llm-trader-persona.v1.md`.
+- **`scripts/strategy-factory.ts`** (`npm run strategy:factory`) — parameter-grid generator over the
+  6 strategy families; the default grids fan out to **106,656** distinct specs. Dry-run by default;
+  `--seed [--limit N]` seeds a bounded sample as `strategy_versions` at `stage='sim'`.
+- **`src/lib/arena/allocator.ts`** + **`scripts/arena-allocate.ts`** (`npm run arena:allocate`) — the
+  capital allocator ("which agents get a capsule and why"): pure, fitness-weighted, concentration-
+  capped sizing over the arena leaderboard, with a written rationale per agent. Dry-run by default;
+  `--commit` appends a `capital-allocation` audit event to `evolution_log`. Unit-tested
+  (`tests/unit/allocator.test.ts`, 3/3).
+- Verified: `npx tsc --noEmit` clean, `npm run build` green, allocator tests pass, factory + allocator
+  run end-to-end on real DB rows.
+
+### Added — Agentic-trading blueprint + Python sim-lab reference
+
+- **Video intelligence** (`docs/blueprint/`) — 4 "All About AI" agentic-trading videos
+  reverse-engineered with OpenAI gpt-4o-mini vision (frame OCR) + gpt-4.1 synthesis. Per-video
+  `PROMPTS.md` (verbatim agent prompts, architecture, risk controls) + unified `BLUEPRINT.md`
+  (the LLM-as-trader pattern, the intent / single-execution-gate framework, the persona/risk system).
+- **`prompts/llm-trader-persona.v1.md`** — versioned trader-agent system prompt distilled from the
+  videos; seed for a planned `trader-llm` Evaluator that emits risk-gated `submit-order` intents.
+- **`docs/blueprint/INTEGRATION.md`** — maps the blueprint onto existing capsules/router/risk/stages
+  and lays out the scale plan: `trader-llm` agent, `strategy-factory` (→10^5 variants via param grids),
+  and an `allocator` ("which agents get a capsule and why", logged to `evolution_log`).
+- **`research/sim-lab/`** — self-contained Python reference implementation of the full loop on REAL
+  market data (Coinbase/Hyperliquid): OpenAI LLM-trader → capsule → single risk gate → sim perp broker
+  → risk-adjusted scoring → multi-window promotion verdict → treasury ledger. Unit-tested broker math
+  (5/5). De-risks the TS port. Measured: single LLM scalper ≈ break-even (BTC +1.0%, ETH +0.82% on 5m).
+
+### Added — Packaging pass (port of TradingBot patterns)
+
+- **Venue abstraction** (`src/lib/venue/`)
+  - `VenueAdapter` interface, `ExecutionRouter` with idempotent submit + halt gate + capsule gate + risk gate.
+  - `PolymarketAdapter` and `CoinbaseAdapter` wrap the existing `executeSingleMarketArb` / `executeCoinbaseMarket` paths so per-venue safety envs (`ALLOW_TRADE`, `COINBASE_ALLOW_TRADE`) still apply on top of the router gates.
+  - Append-only hash-chained `order_events` table (`appendOrderEvent`, `verifyChain`).
+- **Centralized risk engine** (`src/lib/risk/`)
+  - `RiskEngine.check()` with notional, daily-loss, order-rate, position-notional, max-open-positions, and concentration gates.
+  - `KillSwitch.haltAll()` halts every registered adapter at once; `resume()` clears the halt and re-rolls the day-PNL tracker.
+  - Env-driven `RISK_*` knobs in `src/lib/risk/limits.ts`.
+- **Capsules** (`src/lib/capsules/`)
+  - Per-agent risk envelope: `max_position_pct`, `max_daily_loss_usd`, `max_open_positions`, `max_trades_per_day`, `min_seconds_between_trades`.
+  - DB-backed store + pure `checkOrder()` gate.
+  - REST: `GET/POST /api/capsules`, `GET/PATCH/DELETE /api/capsules/[id]`.
+- **Release stages** (`src/lib/stages/`)
+  - `sim → paper → live_eligible → live` ladder on `strategy_versions.stage`.
+  - `setVersionStage()` enforces the promotion ladder (or `force=true`); logs to `evolution_log`.
+  - REST: `POST /api/strategies/[id]/stage`.
+- **Reconciler** (`src/lib/reconcile/`)
+  - Pure `diffOrders()` function (testable without venues).
+  - `reconcileCoinbase()` diffs `coinbase_orders` against venue truth and writes `reconcile_drift` events to `order_events`.
+  - `npm run worker:reconcile` runs a one-shot pass.
+- **Backtester** (`src/lib/backtest/`)
+  - `runBacktest()` replays `market_snapshots` through a decision function and scores using the TradingBot arena formula: `pnl_pct − k × max_dd_pct`.
+  - Example `thresholdMeanReversion()` decision fn included.
+  - CLI: `npm run backtest -- --version <id> --token <token_id>`.
+- **Deploy artifacts**
+  - Multi-stage `Dockerfile` (Node 22, better-sqlite3 native build clean-room).
+  - `docker-compose.yml` with `app`, `reconcile` sidecar, `research` sidecar — all sharing one SQLite volume.
+  - `vercel.json` with per-route `maxDuration` and a `/api/venue/health` cron.
+  - `CONTRIBUTING.md`, `DEPLOY_RUNBOOK.md`, this `CHANGELOG.md`.
+- **DB schema**
+  - New tables: `capsules`, `order_events`.
+  - New column: `strategy_versions.stage` (default `sim`). Migration handled in `scripts/init-db.ts`.
+
+### Changed
+
+- `package.json` — new scripts: `worker:reconcile`, `backtest`, `docker:build|up|down|logs`.
+
+### Notes
+
+- Existing `executeSingleMarketArb` / `executeCoinbaseMarket` call sites continue to work unchanged. The router is an additional path, not a replacement; the per-venue safety gates remain the source of truth for per-venue caps.
+- `RISK_*` envs are new and *add* a global layer on top of the per-venue caps. Default values are conservative (max_order_usd=$250, max_daily_loss=$200); see `src/lib/risk/limits.ts` for the full list.
+
+## [0.1.0] — Initial commit
+
+- Next.js 15 + SQLite control plane for Polymarket strategy design + research-loop evolution.
+- Polymarket: typed CLOB/Gamma/Data clients, EIP-712/HMAC signing, LP-based combinatorial arb solver, on-chain (viem) wiring, executor with three-layer safety gates.
+- Coinbase Advanced Trade: ES256 JWT auth, REST + WebSocket clients, execute with separate safety gates, cross-venue agent seed.
+- 974 offline tests (unit + integration + contract) + 8 live E2E (opt-in via `RUN_E2E=1`).
+- 47-endpoint Polymarket sweep + ~30-endpoint Coinbase sweep.

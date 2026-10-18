@@ -1,0 +1,805 @@
+{
+  "generated_at": "2026-05-25T18:59:40.090Z",
+  "key_name_preview": "organizations/cb1391a3-d7a9-4856-a3f2-843e3e43002a/apiKeys/25b45…",
+  "destructive": true,
+  "allow_live": false,
+  "counts": {
+    "pass": 28,
+    "fail": 3,
+    "skip": 3
+  },
+  "results": [
+    {
+      "category": "public",
+      "name": "server time",
+      "method": "GET",
+      "path": "/time",
+      "status": "pass",
+      "http": 200,
+      "ms": 242,
+      "sample": {
+        "iso": "2026-05-25T18:59:36Z",
+        "epochSeconds": "1779735576",
+        "epochMillis": "1779735576667"
+      }
+    },
+    {
+      "category": "public",
+      "name": "market list products (limit=3)",
+      "method": "GET",
+      "path": "/market/products",
+      "status": "pass",
+      "http": 200,
+      "ms": 110,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"products\":[{\"product_id\":\"BTC-USD\",\"price\":\"77479.5\",\"price_percentage_change_24h\":\"1.19413242646366\",\"volume_24h\":\"3740.6906203\",\"volume_percentage_change_24h\":\"-14.20701562095084\",\"base_increment\":\"0.00000001\",\"quote_increment\":\"0.01\",\"quote_min_size\":\"1\",\"quote_max_size\":\"150000000\",\"base_min_size\":\"0.00000001\",\"base_max_size\":\"3400\",\"base_name\":\"Bitcoin\",\"quote_name\":\"US Dollar\",\"watched\":false,\"is_disabled\":false,\"new\":false,\"status\":\"online\",\"cancel_only\":false,\"limit_only\":false,\"post_only\":false,\"trading_disabled\":false,\"auction_mode\":false,\"product_type\":\"SPOT\",\"quote_currency_id\":\"USD\",\"base_currency_id\":\"BTC\",\"fcm_trading_session_details\":null,\"mid_market_price\":\"\",\"alias\":\"\",\"alias_to\":[\"BTC-USDC\"],\"base_display_symbol\":\"BTC\",\"quote_display_symbol\":\"USD\",\"view_only\":false,\"price_increment\":\"0.01\",\"display_name\":\"BTC-USD\",\"product_venue\":\"CBE\",\"approximate_quote_24h_volume\":\"289826838.92\",\"new_at\":\"2023-01-01T00:00:00Z\",\"market_cap\":\"\",\"base_cbrn\":\"\",\"quote_cbrn\":\"\",\"product_cbrn\":\"\",\"icon_color\":\"\",\"icon_url\":\"\",\"display_name_overwrite\":\"\",\"is_alpha_testing\":false,\"about_description\":\"\",\"best_bid_price\":\"\",\"best_ask_price\":\"\",\"high_24h\":\"\",\"low_24h\":\"\"},{\"product_id\":…"
+      }
+    },
+    {
+      "category": "public",
+      "name": "market product BTC-USD",
+      "method": "GET",
+      "path": "/market/products/BTC-USD",
+      "status": "pass",
+      "http": 200,
+      "ms": 126,
+      "sample": {
+        "product_id": "BTC-USD",
+        "price": "77479.5",
+        "price_percentage_change_24h": "1.19413242646366",
+        "volume_24h": "3740.6906203",
+        "volume_percentage_change_24h": "-14.20701562095084",
+        "base_increment": "0.00000001",
+        "quote_increment": "0.01",
+        "quote_min_size": "1",
+        "quote_max_size": "150000000",
+        "base_min_size": "0.00000001",
+        "base_max_size": "3400",
+        "base_name": "Bitcoin",
+        "quote_name": "US Dollar",
+        "watched": false,
+        "is_disabled": false,
+        "new": false,
+        "status": "online",
+        "cancel_only": false,
+        "limit_only": false,
+        "post_only": false,
+        "trading_disabled": false,
+        "auction_mode": false,
+        "product_type": "SPOT",
+        "quote_currency_id": "USD",
+        "base_currency_id": "BTC",
+        "fcm_trading_session_details": null,
+        "mid_market_price": "",
+        "alias": "",
+        "alias_to": [
+          "BTC-USDC"
+        ],
+        "base_display_symbol": "BTC",
+        "quote_display_symbol": "USD",
+        "view_only": false,
+        "price_increment": "0.01",
+        "display_name": "BTC-USD",
+        "product_venue": "CBE",
+        "approximate_quote_24h_volume": "289826838.92",
+        "new_at": "2023-01-01T00:00:00Z",
+        "market_cap": "",
+        "base_cbrn": "",
+        "quote_cbrn": "",
+        "product_cbrn": "",
+        "icon_color": "",
+        "icon_url": "",
+        "display_name_overwrite": "",
+        "is_alpha_testing": false,
+        "about_description": "",
+        "best_bid_price": "",
+        "best_ask_price": "",
+        "high_24h": "",
+        "low_24h": ""
+      }
+    },
+    {
+      "category": "public",
+      "name": "market book BTC-USD (limit=5)",
+      "method": "GET",
+      "path": "/market/product_book",
+      "status": "pass",
+      "http": 200,
+      "ms": 75,
+      "sample": {
+        "pricebook": {
+          "product_id": "BTC-USD",
+          "bids": [
+            {
+              "price": "77479.5",
+              "size": "0.06898792"
+            },
+            {
+              "price": "77478.85",
+              "size": "0.00221558"
+            },
+            {
+              "price": "77477.4",
+              "size": "0.000015"
+            },
+            {
+              "price": "77475.01",
+              "size": "0.03226856"
+            },
+            {
+              "price": "77474.99",
+              "size": "0.0000001"
+            }
+          ],
+          "asks": [
+            {
+              "price": "77479.51",
+              "size": "0.01117362"
+            },
+            {
+              "price": "77479.97",
+              "size": "0.07743936"
+            },
+            {
+              "price": "77480",
+              "size": "0.04492417"
+            },
+            {
+              "price": "77480.35",
+              "size": "0.0258151"
+            },
+            {
+              "price": "77481.14",
+              "size": "0.05045805"
+            }
+          ],
+          "time": "2026-05-25T18:59:36.647853Z"
+        },
+        "last": "77479.505",
+        "mid_market": "77479.505",
+        "spread_bps": "0.001290663816",
+        "spread_absolute": "0.01"
+      }
+    },
+    {
+      "category": "public",
+      "name": "market trades BTC-USD (limit=5)",
+      "method": "GET",
+      "path": "/market/products/BTC-USD/ticker",
+      "status": "pass",
+      "http": 200,
+      "ms": 103,
+      "sample": {
+        "trades": [
+          {
+            "trade_id": "1023915430",
+            "product_id": "BTC-USD",
+            "price": "77479.51",
+            "size": "0.00012458",
+            "time": "2026-05-25T18:59:36.767681Z",
+            "side": "SELL",
+            "bid": "",
+            "ask": "",
+            "exchange": "coinbase"
+          },
+          {
+            "trade_id": "1023915429",
+            "product_id": "BTC-USD",
+            "price": "77479.51",
+            "size": "0.00006069",
+            "time": "2026-05-25T18:59:36.305885Z",
+            "side": "SELL",
+            "bid": "",
+            "ask": "",
+            "exchange": "coinbase"
+          },
+          {
+            "trade_id": "1023915428",
+            "product_id": "BTC-USD",
+            "price": "77479.51",
+            "size": "0.00003833",
+            "time": "2026-05-25T18:59:35.987509Z",
+            "side": "SELL",
+            "bid": "",
+            "ask": "",
+            "exchange": "coinbase"
+          },
+          {
+            "trade_id": "1023915427",
+            "product_id": "BTC-USD",
+            "price": "77479.51",
+            "size": "0.0012904",
+            "time": "2026-05-25T18:59:35.977433Z",
+            "side": "SELL",
+            "bid": "",
+            "ask": "",
+            "exchange": "coinbase"
+          },
+          {
+            "trade_id": "1023915426",
+            "product_id": "BTC-USD",
+            "price": "77479.5",
+            "size": "0.00399413",
+            "time": "2026-05-25T18:59:35.927390Z",
+            "side": "BUY",
+            "bid": "",
+            "ask": "",
+            "exchange": "coinbase"
+          }
+        ],
+        "best_bid": "77479.5",
+        "best_ask": "77479.51"
+      }
+    },
+    {
+      "category": "public",
+      "name": "market candles BTC-USD 1h",
+      "method": "GET",
+      "path": "/market/products/BTC-USD/candles",
+      "status": "pass",
+      "http": 200,
+      "ms": 148,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"candles\":[{\"start\":\"1779732000\",\"low\":\"77465.79\",\"high\":\"77593.48\",\"open\":\"77490.01\",\"close\":\"77479.51\",\"volume\":\"92.57104994\"},{\"start\":\"1779728400\",\"low\":\"77473.51\",\"high\":\"77740.38\",\"open\":\"77663.16\",\"close\":\"77490.01\",\"volume\":\"153.44252108\"},{\"start\":\"1779724800\",\"low\":\"77436.02\",\"high\":\"77740.56\",\"open\":\"77549.96\",\"close\":\"77663.17\",\"volume\":\"121.25404971\"},{\"start\":\"1779721200\",\"low\":\"77472.88\",\"high\":\"77834.55\",\"open\":\"77639.29\",\"close\":\"77549.95\",\"volume\":\"272.5377513\"},{\"start\":\"1779717600\",\"low\":\"77218.38\",\"high\":\"77700\",\"open\":\"77257.53\",\"close\":\"77639.31\",\"volume\":\"257.06546833\"},{\"start\":\"1779714000\",\"low\":\"77206.01\",\"high\":\"77377.5\",\"open\":\"77281.55\",\"close\":\"77257.53\",\"volume\":\"166.63553372\"},{\"start\":\"1779710400\",\"low\":\"77204.36\",\"high\":\"77361.53\",\"open\":\"77284.13\",\"close\":\"77280.54\",\"volume\":\"85.43174558\"},{\"start\":\"1779706800\",\"low\":\"77254.47\",\"high\":\"77460.05\",\"open\":\"77460.05\",\"close\":\"77284.13\",\"volume\":\"75.8037205\"},{\"start\":\"1779703200\",\"low\":\"77407.01\",\"high\":\"77606.62\",\"open\":\"77517.01\",\"close\":\"77460.05\",\"volume\":\"80.65414671\"},{\"start\":\"1779699600\",\"low\":\"77327.52\",\"high\":\"77617.56\",\"open\":\"77366.78\",\"close\":\"77517.01\",\"volume\":\"132.43777846\"},{\"start\"…"
+      }
+    },
+    {
+      "category": "auth",
+      "name": "key permissions",
+      "method": "GET",
+      "path": "/key_permissions",
+      "status": "pass",
+      "http": 200,
+      "ms": 156,
+      "sample": {
+        "can_view": true,
+        "can_trade": true,
+        "can_transfer": true,
+        "portfolio_uuid": "58d9d96d-fdcd-541c-9f8e-74315ceab925",
+        "portfolio_type": "DEFAULT"
+      }
+    },
+    {
+      "category": "accounts",
+      "name": "list accounts (limit=10)",
+      "method": "GET",
+      "path": "/accounts",
+      "status": "pass",
+      "http": 200,
+      "ms": 136,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"accounts\":[{\"uuid\":\"db3e6144-a1f2-5e4d-86c6-f703dcab6322\",\"name\":\"USDS Wallet\",\"currency\":\"USDS\",\"available_balance\":{\"value\":\"0.00471197\",\"currency\":\"USDS\"},\"default\":true,\"active\":true,\"created_at\":\"2026-05-04T20:21:12.579Z\",\"updated_at\":\"2026-05-06T09:28:29.720126Z\",\"deleted_at\":null,\"type\":\"ACCOUNT_TYPE_CRYPTO\",\"ready\":true,\"hold\":{\"value\":\"0\",\"currency\":\"USDS\"},\"retail_portfolio_id\":\"58d9d96d-fdcd-541c-9f8e-74315ceab925\",\"platform\":\"ACCOUNT_PLATFORM_CONSUMER\"},{\"uuid\":\"2d4451d1-cb5e-5ce4-a235-22618e0d30c1\",\"name\":\"POL Wallet\",\"currency\":\"POL\",\"available_balance\":{\"value\":\"8.00375362252326809\",\"currency\":\"POL\"},\"default\":true,\"active\":true,\"created_at\":\"2025-10-02T16:01:06.733Z\",\"updated_at\":\"2025-10-17T16:17:54.493374Z\",\"deleted_at\":null,\"type\":\"ACCOUNT_TYPE_CRYPTO\",\"ready\":true,\"hold\":{\"value\":\"0\",\"currency\":\"POL\"},\"retail_portfolio_id\":\"58d9d96d-fdcd-541c-9f8e-74315ceab925\",\"platform\":\"ACCOUNT_PLATFORM_CONSUMER\"},{\"uuid\":\"5e4bda90-85b1-5bf7-b0e9-f5aa53cfce7a\",\"name\":\"TIME Wallet\",\"currency\":\"TIME\",\"available_balance\":{\"value\":\"0\",\"currency\":\"TIME\"},\"default\":true,\"active\":true,\"created_at\":\"2022-07-01T23:32:27.530Z\",\"updated_at\":\"2022-07-01T23:32:27.572986Z\",\"deleted_at\":n…"
+      }
+    },
+    {
+      "category": "accounts",
+      "name": "get account",
+      "method": "GET",
+      "path": "/accounts/db3e6144…",
+      "status": "pass",
+      "http": 200,
+      "ms": 128,
+      "sample": {
+        "account": {
+          "uuid": "db3e6144-a1f2-5e4d-86c6-f703dcab6322",
+          "name": "USDS Wallet",
+          "currency": "USDS",
+          "available_balance": {
+            "value": "0.00471197",
+            "currency": "USDS"
+          },
+          "default": true,
+          "active": true,
+          "created_at": "2026-05-04T20:21:12.579Z",
+          "updated_at": "2026-05-06T09:28:29.720126Z",
+          "deleted_at": null,
+          "type": "ACCOUNT_TYPE_CRYPTO",
+          "ready": true,
+          "hold": {
+            "value": "0",
+            "currency": "USDS"
+          },
+          "retail_portfolio_id": "58d9d96d-fdcd-541c-9f8e-74315ceab925",
+          "platform": "ACCOUNT_PLATFORM_CONSUMER"
+        }
+      }
+    },
+    {
+      "category": "products",
+      "name": "list products (limit=3)",
+      "method": "GET",
+      "path": "/products",
+      "status": "pass",
+      "http": 200,
+      "ms": 102,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"products\":[{\"product_id\":\"BTC-USD\",\"price\":\"77479.5\",\"price_percentage_change_24h\":\"1.19413242646366\",\"volume_24h\":\"3740.6957199\",\"volume_percentage_change_24h\":\"-14.20689866129083\",\"base_increment\":\"0.00000001\",\"quote_increment\":\"0.01\",\"quote_min_size\":\"1\",\"quote_max_size\":\"150000000\",\"base_min_size\":\"0.00000001\",\"base_max_size\":\"3400\",\"base_name\":\"Bitcoin\",\"quote_name\":\"US Dollar\",\"watched\":false,\"is_disabled\":false,\"new\":false,\"status\":\"online\",\"cancel_only\":false,\"limit_only\":false,\"post_only\":false,\"trading_disabled\":false,\"auction_mode\":false,\"product_type\":\"SPOT\",\"quote_currency_id\":\"USD\",\"base_currency_id\":\"BTC\",\"fcm_trading_session_details\":null,\"mid_market_price\":\"\",\"alias\":\"\",\"alias_to\":[\"BTC-USDC\"],\"base_display_symbol\":\"BTC\",\"quote_display_symbol\":\"USD\",\"view_only\":false,\"price_increment\":\"0.01\",\"display_name\":\"BTC-USD\",\"product_venue\":\"CBE\",\"approximate_quote_24h_volume\":\"289827234.03\",\"new_at\":\"2023-01-01T00:00:00Z\",\"market_cap\":\"\",\"base_cbrn\":\"\",\"quote_cbrn\":\"\",\"product_cbrn\":\"\",\"icon_color\":\"\",\"icon_url\":\"\",\"display_name_overwrite\":\"\",\"is_alpha_testing\":false,\"about_description\":\"\",\"best_bid_price\":\"\",\"best_ask_price\":\"\",\"high_24h\":\"77834.55\",\"low_24h\":\"76000\"},{…"
+      }
+    },
+    {
+      "category": "products",
+      "name": "get product BTC-USD",
+      "method": "GET",
+      "path": "/products/BTC-USD",
+      "status": "pass",
+      "http": 200,
+      "ms": 101,
+      "sample": {
+        "product_id": "BTC-USD",
+        "price": "77479.51",
+        "price_percentage_change_24h": "1.19414548722586",
+        "volume_24h": "3740.6957199",
+        "volume_percentage_change_24h": "-14.20689866129083",
+        "base_increment": "0.00000001",
+        "quote_increment": "0.01",
+        "quote_min_size": "1",
+        "quote_max_size": "150000000",
+        "base_min_size": "0.00000001",
+        "base_max_size": "3400",
+        "base_name": "Bitcoin",
+        "quote_name": "US Dollar",
+        "watched": false,
+        "is_disabled": false,
+        "new": false,
+        "status": "online",
+        "cancel_only": false,
+        "limit_only": false,
+        "post_only": false,
+        "trading_disabled": false,
+        "auction_mode": false,
+        "product_type": "SPOT",
+        "quote_currency_id": "USD",
+        "base_currency_id": "BTC",
+        "fcm_trading_session_details": null,
+        "mid_market_price": "",
+        "alias": "",
+        "alias_to": [
+          "BTC-USDC"
+        ],
+        "base_display_symbol": "BTC",
+        "quote_display_symbol": "USD",
+        "view_only": false,
+        "price_increment": "0.01",
+        "display_name": "BTC-USD",
+        "product_venue": "CBE",
+        "approximate_quote_24h_volume": "289827271.44",
+        "new_at": "2023-01-01T00:00:00Z",
+        "market_cap": "",
+        "base_cbrn": "",
+        "quote_cbrn": "",
+        "product_cbrn": "",
+        "icon_color": "",
+        "icon_url": "",
+        "display_name_overwrite": "",
+        "is_alpha_testing": false,
+        "about_description": "",
+        "best_bid_price": "",
+        "best_ask_price": "",
+        "high_24h": "77834.55",
+        "low_24h": "76000"
+      }
+    },
+    {
+      "category": "products",
+      "name": "candles BTC-USD 1h",
+      "method": "GET",
+      "path": "/products/BTC-USD/candles",
+      "status": "pass",
+      "http": 200,
+      "ms": 114,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"candles\":[{\"start\":\"1779732000\",\"low\":\"77465.79\",\"high\":\"77593.48\",\"open\":\"77490.01\",\"close\":\"77479.51\",\"volume\":\"92.57104994\"},{\"start\":\"1779728400\",\"low\":\"77473.51\",\"high\":\"77740.38\",\"open\":\"77663.16\",\"close\":\"77490.01\",\"volume\":\"153.44252108\"},{\"start\":\"1779724800\",\"low\":\"77436.02\",\"high\":\"77740.56\",\"open\":\"77549.96\",\"close\":\"77663.17\",\"volume\":\"121.25404971\"},{\"start\":\"1779721200\",\"low\":\"77472.88\",\"high\":\"77834.55\",\"open\":\"77639.29\",\"close\":\"77549.95\",\"volume\":\"272.5377513\"},{\"start\":\"1779717600\",\"low\":\"77218.38\",\"high\":\"77700\",\"open\":\"77257.53\",\"close\":\"77639.31\",\"volume\":\"257.06546833\"},{\"start\":\"1779714000\",\"low\":\"77206.01\",\"high\":\"77377.5\",\"open\":\"77281.55\",\"close\":\"77257.53\",\"volume\":\"166.63553372\"},{\"start\":\"1779710400\",\"low\":\"77204.36\",\"high\":\"77361.53\",\"open\":\"77284.13\",\"close\":\"77280.54\",\"volume\":\"85.43174558\"},{\"start\":\"1779706800\",\"low\":\"77254.47\",\"high\":\"77460.05\",\"open\":\"77460.05\",\"close\":\"77284.13\",\"volume\":\"75.8037205\"},{\"start\":\"1779703200\",\"low\":\"77407.01\",\"high\":\"77606.62\",\"open\":\"77517.01\",\"close\":\"77460.05\",\"volume\":\"80.65414671\"},{\"start\":\"1779699600\",\"low\":\"77327.52\",\"high\":\"77617.56\",\"open\":\"77366.78\",\"close\":\"77517.01\",\"volume\":\"132.43777846\"},{\"start\"…"
+      }
+    },
+    {
+      "category": "products",
+      "name": "market trades BTC-USD",
+      "method": "GET",
+      "path": "/products/BTC-USD/ticker",
+      "status": "pass",
+      "http": 200,
+      "ms": 110,
+      "sample": {
+        "trades": [
+          {
+            "trade_id": "1023915438",
+            "product_id": "BTC-USD",
+            "price": "77479.5",
+            "size": "0.00000002",
+            "time": "2026-05-25T18:59:37.939448Z",
+            "side": "BUY",
+            "bid": "",
+            "ask": "",
+            "exchange": "coinbase"
+          },
+          {
+            "trade_id": "1023915437",
+            "product_id": "BTC-USD",
+            "price": "77479.5",
+            "size": "0.00000001",
+            "time": "2026-05-25T18:59:37.899388Z",
+            "side": "BUY",
+            "bid": "",
+            "ask": "",
+            "exchange": "coinbase"
+          },
+          {
+            "trade_id": "1023915436",
+            "product_id": "BTC-USD",
+            "price": "77479.51",
+            "size": "0.00062055",
+            "time": "2026-05-25T18:59:37.467696Z",
+            "side": "SELL",
+            "bid": "",
+            "ask": "",
+            "exchange": "coinbase"
+          },
+          {
+            "trade_id": "1023915435",
+            "product_id": "BTC-USD",
+            "price": "77479.51",
+            "size": "0.00000645",
+            "time": "2026-05-25T18:59:37.467696Z",
+            "side": "SELL",
+            "bid": "",
+            "ask": "",
+            "exchange": "coinbase"
+          },
+          {
+            "trade_id": "1023915434",
+            "product_id": "BTC-USD",
+            "price": "77479.51",
+            "size": "0.00063888",
+            "time": "2026-05-25T18:59:37.385590Z",
+            "side": "SELL",
+            "bid": "",
+            "ask": "",
+            "exchange": "coinbase"
+          }
+        ],
+        "best_bid": "77479.5",
+        "best_ask": "77479.51"
+      }
+    },
+    {
+      "category": "products",
+      "name": "book BTC-USD (limit=5)",
+      "method": "GET",
+      "path": "/product_book",
+      "status": "pass",
+      "http": 200,
+      "ms": 96,
+      "sample": {
+        "pricebook": {
+          "product_id": "BTC-USD",
+          "bids": [
+            {
+              "price": "77479.5",
+              "size": "0.06085758"
+            },
+            {
+              "price": "77478.9",
+              "size": "0.00247371"
+            },
+            {
+              "price": "77477.4",
+              "size": "0.000015"
+            },
+            {
+              "price": "77476",
+              "size": "0.0528"
+            },
+            {
+              "price": "77475.01",
+              "size": "0.03226856"
+            }
+          ],
+          "asks": [
+            {
+              "price": "77479.51",
+              "size": "0.04354632"
+            },
+            {
+              "price": "77480",
+              "size": "0.04492417"
+            },
+            {
+              "price": "77480.35",
+              "size": "0.0258151"
+            },
+            {
+              "price": "77481.09",
+              "size": "0.05658551"
+            },
+            {
+              "price": "77481.1",
+              "size": "0.04"
+            }
+          ],
+          "time": "2026-05-25T18:59:38.071713Z"
+        },
+        "last": "77479.505",
+        "mid_market": "77479.505",
+        "spread_bps": "0.001290663816",
+        "spread_absolute": "0.01"
+      }
+    },
+    {
+      "category": "products",
+      "name": "best bid/ask",
+      "method": "GET",
+      "path": "/best_bid_ask",
+      "status": "pass",
+      "http": 200,
+      "ms": 100,
+      "sample": {
+        "pricebooks": [
+          {
+            "product_id": "BTC-USD",
+            "bids": [
+              {
+                "price": "77479.5",
+                "size": "0.05294548"
+              }
+            ],
+            "asks": [
+              {
+                "price": "77479.51",
+                "size": "0.04353141"
+              }
+            ],
+            "time": "2026-05-25T18:59:37.942386Z"
+          }
+        ]
+      }
+    },
+    {
+      "category": "orders",
+      "name": "list open orders",
+      "method": "GET",
+      "path": "/orders/historical/batch",
+      "status": "pass",
+      "http": 200,
+      "ms": 102,
+      "sample": {
+        "orders": [],
+        "sequence": "0",
+        "has_next": false,
+        "cursor": "",
+        "proof_token_required": false
+      }
+    },
+    {
+      "category": "orders",
+      "name": "list filled orders",
+      "method": "GET",
+      "path": "/orders/historical/batch",
+      "status": "pass",
+      "http": 200,
+      "ms": 112,
+      "sample": {
+        "orders": [],
+        "sequence": "0",
+        "has_next": false,
+        "cursor": "",
+        "proof_token_required": false
+      }
+    },
+    {
+      "category": "orders",
+      "name": "list fills",
+      "method": "GET",
+      "path": "/orders/historical/fills",
+      "status": "pass",
+      "http": 200,
+      "ms": 102,
+      "sample": {
+        "fills": [],
+        "cursor": "",
+        "proof_token_required": false
+      }
+    },
+    {
+      "category": "orders",
+      "name": "get order",
+      "method": "GET",
+      "path": "/orders/historical/{id}",
+      "status": "skip",
+      "error": "no orders in history"
+    },
+    {
+      "category": "portfolios",
+      "name": "list portfolios",
+      "method": "GET",
+      "path": "/portfolios",
+      "status": "pass",
+      "http": 200,
+      "ms": 138,
+      "sample": {
+        "portfolios": [
+          {
+            "name": "Default",
+            "uuid": "58d9d96d-fdcd-541c-9f8e-74315ceab925",
+            "type": "DEFAULT",
+            "deleted": false
+          }
+        ]
+      }
+    },
+    {
+      "category": "portfolios",
+      "name": "get breakdown",
+      "method": "GET",
+      "path": "/portfolios/58d9d96d…",
+      "status": "pass",
+      "http": 200,
+      "ms": 213,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"breakdown\":{\"portfolio\":{\"name\":\"Default\",\"uuid\":\"58d9d96d-fdcd-541c-9f8e-74315ceab925\",\"type\":\"DEFAULT\",\"deleted\":false},\"portfolio_balances\":{\"total_balance\":{\"value\":\"547.259084340658427626070474\",\"currency\":\"USD\"},\"total_futures_balance\":{\"value\":\"0\",\"currency\":\"USD\"},\"total_cash_equivalent_balance\":{\"value\":\"0.003729\",\"currency\":\"USD\"},\"total_crypto_balance\":{\"value\":\"547.255355340658427626070474\",\"currency\":\"USD\"},\"futures_unrealized_pnl\":{\"value\":\"0\",\"currency\":\"USD\"},\"perp_unrealized_pnl\":{\"value\":\"0\",\"currency\":\"USD\"},\"total_equities_balance\":{\"value\":\"0\",\"currency\":\"USD\"}},\"spot_positions\":[{\"asset\":\"USD\",\"account_uuid\":\"039abd42-ff37-561c-becc-a0f9c6badebb\",\"total_balance_fiat\":0,\"total_balance_crypto\":0,\"available_to_trade_fiat\":0,\"allocation\":0,\"cost_basis\":{\"value\":\"0\",\"currency\":\"USD\"},\"asset_img_url\":\"\",\"is_cash\":true,\"average_entry_price\":{\"value\":\"0\",\"currency\":\"USD\"},\"asset_uuid\":\"\",\"available_to_trade_crypto\":0,\"unrealized_pnl\":0,\"available_to_transfer_fiat\":0,\"available_to_transfer_crypto\":0,\"asset_color\":\"\",\"account_type\":\"ACCOUNT_TYPE_FIAT\",\"funding_pnl\":0,\"available_to_send_fiat\":0,\"available_to_send_crypto\":0},{\"asset\":\"SKL\",\"account_uuid\":\"082c04ac-c202-…"
+      }
+    },
+    {
+      "category": "fees",
+      "name": "transaction summary",
+      "method": "GET",
+      "path": "/transaction_summary",
+      "status": "pass",
+      "http": 200,
+      "ms": 121,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"total_volume\":0,\"total_fees\":0,\"fee_tier\":{\"pricing_tier\":\"Intro 1\",\"usd_from\":\"\",\"usd_to\":\"\",\"taker_fee_rate\":\"0.012\",\"maker_fee_rate\":\"0.006\",\"aop_from\":\"0\",\"aop_to\":\"1000000\",\"perps_vol_from\":\"\",\"perps_vol_to\":\"\",\"futures_vol_from\":\"\",\"futures_vol_to\":\"\",\"volume_types_and_range\":[{\"volume_types\":[\"VOLUME_TYPE_SPOT\",\"VOLUME_TYPE_US_DERIVATIVES\"],\"vol_from\":\"0\",\"vol_to\":\"10000\"}]},\"margin_rate\":null,\"goods_and_services_tax\":null,\"advanced_trade_only_volume\":0,\"advanced_trade_only_fees\":0,\"coinbase_pro_volume\":0,\"coinbase_pro_fees\":0,\"total_balance\":\"547.63\",\"has_promo_fee\":false,\"volume_breakdown\":[{\"volume_type\":\"VOLUME_TYPE_SPOT\",\"volume\":0},{\"volume_type\":\"VOLUME_TYPE_US_DERIVATIVES\",\"volume\":0}],\"has_cost_plus_commission\":false,\"fee_tier_without_promotion\":{\"pricing_tier\":\"\",\"qualification_type\":\"FEE_TIER_QUALIFICATION_TYPE_AOP\",\"current_value\":\"547.63\",\"next_tier_threshold\":\"1000000\",\"current_tier\":{\"pricing_tier\":\"Intro 1\",\"usd_from\":\"\",\"usd_to\":\"\",\"taker_fee_rate\":\"0.012\",\"maker_fee_rate\":\"0.006\",\"aop_from\":\"0\",\"aop_to\":\"1000000\",\"perps_vol_from\":\"\",\"perps_vol_to\":\"\",\"futures_vol_from\":\"\",\"futures_vol_to\":\"\",\"volume_types_and_range\":[{\"volume_types\":[\"VOLUME_TYPE_SPOT\",\"V…"
+      }
+    },
+    {
+      "category": "payments",
+      "name": "list payment methods",
+      "method": "GET",
+      "path": "/payment_methods",
+      "status": "pass",
+      "http": 200,
+      "ms": 425,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"payment_methods\":[{\"id\":\"1a85efcf-c483-5de6-b912-c1e122649367\",\"type\":\"GOOGLE_PAY\",\"name\":\"Google Pay\",\"currency\":\"USD\",\"verified\":false,\"allow_buy\":true,\"allow_sell\":false,\"allow_deposit\":true,\"allow_withdraw\":false,\"created_at\":\"2021-12-27T19:59:30Z\",\"updated_at\":\"2022-12-13T21:32:57Z\"},{\"id\":\"59cacb59-eb2e-5428-b83e-225684b03ac0\",\"type\":\"COINBASE_FIAT_ACCOUNT\",\"name\":\"Cash (USD)\",\"currency\":\"USD\",\"verified\":true,\"allow_buy\":true,\"allow_sell\":true,\"allow_deposit\":false,\"allow_withdraw\":false,\"created_at\":\"2019-12-30T22:03:49Z\",\"updated_at\":\"2022-11-15T21:41:22Z\"},{\"id\":\"d8bc5b43-f2da-5c68-8797-46fbe572bc7d\",\"type\":\"APPLE_PAY\",\"name\":\"Apple Pay\",\"currency\":\"USD\",\"verified\":true,\"allow_buy\":true,\"allow_sell\":false,\"allow_deposit\":true,\"allow_withdraw\":false,\"created_at\":\"2021-08-25T03:55:07Z\",\"updated_at\":\"2023-04-17T18:37:45Z\"},{\"id\":\"eb192edd-d674-461b-a06d-bc80a88ecd5e\",\"type\":\"WORLDPAY_CARD\",\"name\":\"4130********6252\",\"currency\":\"USD\",\"verified\":false,\"allow_buy\":false,\"allow_sell\":false,\"allow_deposit\":false,\"allow_withdraw\":false,\"created_at\":\"2025-04-07T00:51:44Z\",\"updated_at\":\"2025-04-08T00:53:47Z\"},{\"id\":\"f716fb99-ef1d-4cac-9c16-a3cb62a96a0b\",\"type\":\"ACH\",\"name\":\"Truist -…"
+      }
+    },
+    {
+      "category": "payments",
+      "name": "get payment method",
+      "method": "GET",
+      "path": "/payment_methods/1a85efcf…",
+      "status": "pass",
+      "http": 200,
+      "ms": 221,
+      "sample": {
+        "payment_method": {
+          "id": "1a85efcf-c483-5de6-b912-c1e122649367",
+          "type": "GOOGLE_PAY",
+          "name": "Google Pay",
+          "currency": "USD",
+          "verified": false,
+          "allow_buy": true,
+          "allow_sell": false,
+          "allow_deposit": true,
+          "allow_withdraw": false,
+          "created_at": "2021-12-27T19:59:30Z",
+          "updated_at": "2022-12-13T21:32:57Z"
+        }
+      }
+    },
+    {
+      "category": "cfm",
+      "name": "balance summary",
+      "method": "GET",
+      "path": "/cfm/balance_summary",
+      "status": "pass",
+      "http": 200,
+      "ms": 136,
+      "sample": {
+        "balance_summary": null
+      }
+    },
+    {
+      "category": "cfm",
+      "name": "list positions",
+      "method": "GET",
+      "path": "/cfm/positions",
+      "status": "pass",
+      "http": 200,
+      "ms": 144,
+      "sample": {
+        "positions": []
+      }
+    },
+    {
+      "category": "cfm",
+      "name": "list sweeps",
+      "method": "GET",
+      "path": "/cfm/sweeps",
+      "status": "pass",
+      "http": 200,
+      "ms": 118,
+      "sample": {
+        "sweeps": []
+      }
+    },
+    {
+      "category": "cfm",
+      "name": "intraday margin setting",
+      "method": "GET",
+      "path": "/cfm/intraday/margin_setting",
+      "status": "pass",
+      "http": 200,
+      "ms": 138,
+      "sample": {
+        "setting": "INTRADAY_MARGIN_SETTING_STANDARD"
+      }
+    },
+    {
+      "category": "intx",
+      "name": "portfolio summary",
+      "method": "GET",
+      "path": "/intx/portfolio/58d9d96d…",
+      "status": "fail",
+      "error": "GET /api/v3/brokerage/intx/portfolio/58d9d96d-fdcd-541c-9f8e-74315ceab925 → 403 {\"error\":\"PERMISSION_DENIED\",\"error_details\":\"User does not have the correct permissions\",\"message\":\"User does not have the correct permissions\"}",
+      "ms": 109,
+      "http": 403
+    },
+    {
+      "category": "intx",
+      "name": "perps positions",
+      "method": "GET",
+      "path": "/intx/positions/58d9d96d…",
+      "status": "fail",
+      "error": "GET /api/v3/brokerage/intx/positions/58d9d96d-fdcd-541c-9f8e-74315ceab925 → 403 {\"error\":\"PERMISSION_DENIED\",\"error_details\":\"User does not have the correct permissions\",\"message\":\"User does not have the correct permissions\"}",
+      "ms": 98,
+      "http": 403
+    },
+    {
+      "category": "intx",
+      "name": "perps balances",
+      "method": "GET",
+      "path": "/intx/balances/58d9d96d…",
+      "status": "fail",
+      "error": "GET /api/v3/brokerage/intx/balances/58d9d96d-fdcd-541c-9f8e-74315ceab925 → 403 {\"error\":\"PERMISSION_DENIED\",\"error_details\":\"User does not have the correct permissions\",\"message\":\"User does not have the correct permissions\"}",
+      "ms": 102,
+      "http": 403
+    },
+    {
+      "category": "orders!",
+      "name": "preview market BUY",
+      "method": "POST",
+      "path": "/orders/preview",
+      "status": "pass",
+      "http": 200,
+      "ms": 149,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"order_total\":\"1.0000000000000000232\",\"commission_total\":\"0.0118577075098814232\",\"errs\":[\"PREVIEW_INSUFFICIENT_FUND\"],\"warning\":[],\"quote_size\":\"0.9881422924901186\",\"base_size\":\"0.0000127535950149\",\"best_bid\":\"77479.5\",\"best_ask\":\"77479.51\",\"is_max\":false,\"order_margin_total\":\"0\",\"leverage\":\"0\",\"long_leverage\":\"0\",\"short_leverage\":\"0\",\"slippage\":\"0.0000000000028094\",\"preview_id\":\"c8b22b26-107b-4477-b54b-512dc3b682a5\",\"current_liquidation_buffer\":\"0\",\"projected_liquidation_buffer\":\"0\",\"max_leverage\":\"\",\"pnl_configuration\":null,\"twap_bucket_metadata\":null,\"position_notional_limit\":\"\",\"max_notional_at_requested_leverage\":\"\",\"margin_ratio_data\":{\"current_margin_ratio\":\"0\",\"projected_margin_ratio\":\"0\"},\"commission_detail_total\":{\"total_commission\":\"0.0118577075098814232\",\"gst_commission\":\"0\",\"withholding_commission\":\"0\",\"client_commission\":\"0.0118577075098814232\",\"venue_commission\":\"0\",\"regulatory_commission\":\"0\",\"clearing_commission\":\"0\"},\"scaled_metadata\":null,\"compliance_limit_data\":null,\"equity_order_metadata\":null,\"est_average_filled_price\":\"77479.5099997823281203\",\"prediction_order_metadata\":null,\"predicted_liquidation_price\":\"0\",\"available_buying_power\":\"\",\"fill_likelihood\":\"FIL…"
+      }
+    },
+    {
+      "category": "orders!",
+      "name": "create order (LIVE)",
+      "method": "POST",
+      "path": "/orders",
+      "status": "skip",
+      "error": "requires --live + COINBASE_ALLOW_TRADE=1 + COINBASE_SWEEP_MAX_USD>0"
+    },
+    {
+      "category": "orders!",
+      "name": "batch cancel",
+      "method": "POST",
+      "path": "/orders",
+      "status": "skip",
+      "error": "requires --live + COINBASE_ALLOW_TRADE=1 + COINBASE_SWEEP_MAX_USD>0"
+    }
+  ]
+}

@@ -1,0 +1,381 @@
+{
+  "host": "https://api.elections.kalshi.com",
+  "destructive": false,
+  "live": false,
+  "allowLive": false,
+  "sweepMaxUsd": 0,
+  "counts": {
+    "total": 18,
+    "pass": 16,
+    "fail": 0,
+    "skip": 2
+  },
+  "rateLimit": {},
+  "captured": {
+    "firstEventTicker": "KXBTC15M-26MAY261015",
+    "firstMarketTicker": "KXBTC15M-26MAY261015-15",
+    "firstOrderId": null
+  },
+  "results": [
+    {
+      "category": "exchange",
+      "name": "status",
+      "method": "GET",
+      "path": "/exchange/status",
+      "status": "pass",
+      "http": 200,
+      "ms": 232,
+      "sample": {
+        "exchange_active": true,
+        "trading_active": true
+      }
+    },
+    {
+      "category": "exchange",
+      "name": "schedule",
+      "method": "GET",
+      "path": "/exchange/schedule",
+      "status": "pass",
+      "http": 200,
+      "ms": 82,
+      "sample": {
+        "schedule": {
+          "maintenance_windows": [],
+          "standard_hours": [
+            {
+              "end_time": "2200-12-01T00:00:00Z",
+              "friday": [
+                {
+                  "close_time": "00:00",
+                  "open_time": "00:00"
+                }
+              ],
+              "monday": [
+                {
+                  "close_time": "00:00",
+                  "open_time": "00:00"
+                }
+              ],
+              "saturday": [
+                {
+                  "close_time": "00:00",
+                  "open_time": "00:00"
+                }
+              ],
+              "start_time": "2024-12-01T00:00:00Z",
+              "sunday": [
+                {
+                  "close_time": "00:00",
+                  "open_time": "00:00"
+                }
+              ],
+              "thursday": [
+                {
+                  "close_time": "03:00",
+                  "open_time": "00:00"
+                },
+                {
+                  "close_time": "00:00",
+                  "open_time": "05:00"
+                }
+              ],
+              "tuesday": [
+                {
+                  "close_time": "00:00",
+                  "open_time": "00:00"
+                }
+              ],
+              "wednesday": [
+                {
+                  "close_time": "00:00",
+                  "open_time": "00:00"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "category": "exchange",
+      "name": "announcements",
+      "method": "GET",
+      "path": "/exchange/announcements",
+      "status": "pass",
+      "http": 200,
+      "ms": 146,
+      "sample": {
+        "announcements": []
+      }
+    },
+    {
+      "category": "series",
+      "name": "list series",
+      "method": "GET",
+      "path": "/series",
+      "status": "pass",
+      "http": 200,
+      "ms": 768,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"series\":[{\"additional_prohibitions\":[\"Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.\",\"Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract.\"],\"category\":\"Elections\",\"contract_terms_url\":\"https://kalshi-public-docs.s3.amazonaws.com/contract_terms/NYCCOUNCIL.pdf\",\"contract_url\":\"https://kalshi-public-docs.s3.us-east-1.amazonaws.com/regulatory/product-certifications/NYCCOUNCIL.pdf\",\"fee_multiplier\":1,\"fee_type\":\"quadratic\",\"frequency\":\"custom\",\"last_updated_ts\":\"2026-03-21T00:22:10.797267Z\",\"settlement_sources\":[{\"name\":\"City of New York\",\"url\":\"https://www.nyc.gov/\"},{\"name\":\"The New York Times\",\"url\":\"https://www.nytimes.com/\"}],\"tags\":null,\"ticker\":\"KXNYCCOUNCIL28\",\"title\":\"NYCCOUNCIL28\"},{\"additional_prohibitions\":[\"Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.\",\"Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract.\"],\"category\":\"Elections\",\"contract_terms_url\":\"https://kalshi-public-docs.s3.amazonaws.com/contract_terms/TURKEYPRES.pdf\",\"contract_url\":\"h…"
+      }
+    },
+    {
+      "category": "series",
+      "name": "get series KXBTC15M",
+      "method": "GET",
+      "path": "/series/KXBTC15M",
+      "status": "pass",
+      "http": 200,
+      "ms": 69,
+      "sample": {
+        "series": {
+          "additional_prohibitions": [
+            "Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.",
+            "Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract."
+          ],
+          "category": "Crypto",
+          "contract_terms_url": "https://kalshi-public-docs.s3.amazonaws.com/contract_terms/CRYPTO15M.pdf",
+          "contract_url": "https://kalshi-public-docs.s3.us-east-1.amazonaws.com/regulatory/product-certifications/CRYPTO15M.pdf",
+          "fee_multiplier": 1,
+          "fee_type": "quadratic",
+          "frequency": "fifteen_min",
+          "last_updated_ts": "2026-05-15T20:27:54.360301Z",
+          "product_metadata": {
+            "important_info": {
+              "id": "CRYPTO15M-bulk-2026-04-20",
+              "markdown": "**Important information:** The price used to determine this market is based on CF Benchmarks' corresponding Real Time Index (RTI). At the last minute before expiration, 60 RTI prices are collected. The official and final value is the average of these prices.",
+              "message": "",
+              "title": ""
+            }
+          },
+          "settlement_sources": [
+            {
+              "name": "CF Benchmarks",
+              "url": "https://www.cfbenchmarks.com/"
+            }
+          ],
+          "tags": [
+            "BTC",
+            "15 min"
+          ],
+          "ticker": "KXBTC15M",
+          "title": "Bitcoin price up down"
+        }
+      }
+    },
+    {
+      "category": "events",
+      "name": "list events (KXBTC15M open)",
+      "method": "GET",
+      "path": "/events",
+      "status": "pass",
+      "http": 200,
+      "ms": 44,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"cursor\":\"\",\"events\":[{\"available_on_brokers\":true,\"category\":\"Crypto\",\"collateral_return_type\":\"\",\"event_ticker\":\"KXBTC15M-26MAY261015\",\"last_updated_ts\":\"2026-05-26T14:00:00.578603Z\",\"markets\":[{\"can_close_early\":true,\"close_time\":\"2026-05-26T14:15:00Z\",\"created_time\":\"2026-05-26T00:01:57.82124Z\",\"event_ticker\":\"KXBTC15M-26MAY261015\",\"expected_expiration_time\":\"2026-05-26T14:20:00Z\",\"expiration_time\":\"2026-06-02T14:15:00Z\",\"expiration_value\":\"\",\"floor_strike\":77123.96,\"fractional_trading_enabled\":true,\"last_price_dollars\":\"0.4400\",\"latest_expiration_time\":\"2026-06-02T14:15:00Z\",\"liquidity_dollars\":\"0.0000\",\"market_type\":\"binary\",\"no_ask_dollars\":\"0.5700\",\"no_bid_dollars\":\"0.5600\",\"no_sub_title\":\"Target price: TBD\",\"notional_value_dollars\":\"1.0000\",\"occurrence_datetime\":\"2026-05-26T14:20:00Z\",\"open_interest_fp\":\"49967.16\",\"open_time\":\"2026-05-26T14:00:00Z\",\"previous_price_dollars\":\"0.0000\",\"previous_yes_ask_dollars\":\"0.0000\",\"previous_yes_bid_dollars\":\"0.0000\",\"price_level_structure\":\"tapered_deci_cent\",\"price_ranges\":[{\"end\":\"0.1000\",\"start\":\"0.0000\",\"step\":\"0.0010\"},{\"end\":\"0.9000\",\"start\":\"0.1000\",\"step\":\"0.0100\"},{\"end\":\"1.0000\",\"start\":\"0.9000\",\"step\":\"0.0010\"}],\"response_pr…"
+      }
+    },
+    {
+      "category": "events",
+      "name": "get event KXBTC15M-26MAY261015",
+      "method": "GET",
+      "path": "/events/KXBTC15M-26MAY261015",
+      "status": "pass",
+      "http": 200,
+      "ms": 69,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"event\":{\"available_on_brokers\":true,\"category\":\"Crypto\",\"collateral_return_type\":\"\",\"event_ticker\":\"KXBTC15M-26MAY261015\",\"last_updated_ts\":\"0001-01-01T00:00:00Z\",\"markets\":[{\"can_close_early\":true,\"close_time\":\"2026-05-26T14:15:00Z\",\"created_time\":\"2026-05-26T00:01:57.82124Z\",\"event_ticker\":\"KXBTC15M-26MAY261015\",\"expected_expiration_time\":\"2026-05-26T14:20:00Z\",\"expiration_time\":\"2026-06-02T14:15:00Z\",\"expiration_value\":\"\",\"floor_strike\":77123.96,\"fractional_trading_enabled\":true,\"last_price_dollars\":\"0.4400\",\"latest_expiration_time\":\"2026-06-02T14:15:00Z\",\"liquidity_dollars\":\"0.0000\",\"market_type\":\"binary\",\"no_ask_dollars\":\"0.5700\",\"no_bid_dollars\":\"0.5600\",\"no_sub_title\":\"Target price: TBD\",\"notional_value_dollars\":\"1.0000\",\"occurrence_datetime\":\"2026-05-26T14:20:00Z\",\"open_interest_fp\":\"49967.16\",\"open_time\":\"2026-05-26T14:00:00Z\",\"previous_price_dollars\":\"0.0000\",\"previous_yes_ask_dollars\":\"0.0000\",\"previous_yes_bid_dollars\":\"0.0000\",\"price_level_structure\":\"tapered_deci_cent\",\"price_ranges\":[{\"end\":\"0.1000\",\"start\":\"0.0000\",\"step\":\"0.0010\"},{\"end\":\"0.9000\",\"start\":\"0.1000\",\"step\":\"0.0100\"},{\"end\":\"1.0000\",\"start\":\"0.9000\",\"step\":\"0.0010\"}],\"response_price_units\":\"usd_cent\"…"
+      }
+    },
+    {
+      "category": "markets",
+      "name": "list markets (limit=5, open)",
+      "method": "GET",
+      "path": "/markets",
+      "status": "pass",
+      "http": 200,
+      "ms": 45,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"cursor\":\"CgsInNHW0AYQyPbKHRIvS1hNVkVDUk9TU0NBVEVHT1JZLVMyMDI2MDQxMDM3NDQ2MzUtQkM0RUM3NURDMkM\",\"markets\":[{\"can_close_early\":true,\"close_time\":\"2026-06-10T00:30:00Z\",\"created_time\":\"2026-05-26T14:05:16.582043Z\",\"custom_strike\":{\"Associated Events\":\"KXNBAPTS-26MAY26SASOKC,KXNBAPTS-26MAY26SASOKC,KXNBAPTS-26MAY26SASOKC,KXNBAPTS-26MAY26SASOKC,KXNBAPTS-26MAY26SASOKC,KXNBASTL-26MAY26SASOKC\",\"Associated Market Sides\":\"yes,yes,yes,yes,yes,yes\",\"Associated Markets\":\"KXNBAPTS-26MAY26SASOKC-OKCCHOLMGREN7-10,KXNBAPTS-26MAY26SASOKC-SASDFOX4-10,KXNBAPTS-26MAY26SASOKC-SASDVASSELL24-10,KXNBAPTS-26MAY26SASOKC-SASSCASTLE5-10,KXNBAPTS-26MAY26SASOKC-SASVWEMBANYAMA1-20,KXNBASTL-26MAY26SASOKC-SASSCASTLE5-1\",\"Multivariate Event Ticker\":\"KXMVESPORTSMULTIGAMEEXTENDED-S20266287FB51C27\"},\"event_ticker\":\"KXMVESPORTSMULTIGAMEEXTENDED-S20266287FB51C27\",\"expected_expiration_time\":\"2026-05-27T03:30:00Z\",\"expiration_time\":\"2026-06-10T00:30:00Z\",\"expiration_value\":\"\",\"fractional_trading_enabled\":true,\"is_provisional\":true,\"last_price_dollars\":\"0.0000\",\"latest_expiration_time\":\"2026-06-10T00:30:00Z\",\"liquidity_dollars\":\"0.0000\",\"market_type\":\"binary\",\"mve_collection_ticker\":\"KXMVESPORTSMULTIGAMEEXTENDED-R\",\"mve_sel…"
+      }
+    },
+    {
+      "category": "markets",
+      "name": "get market KXBTC15M-26MAY261015-15",
+      "method": "GET",
+      "path": "/markets/KXBTC15M-26MAY261015-15",
+      "status": "pass",
+      "http": 200,
+      "ms": 56,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"market\":{\"can_close_early\":true,\"close_time\":\"2026-05-26T14:15:00Z\",\"created_time\":\"2026-05-26T00:01:57.82124Z\",\"event_ticker\":\"KXBTC15M-26MAY261015\",\"expected_expiration_time\":\"2026-05-26T14:20:00Z\",\"expiration_time\":\"2026-06-02T14:15:00Z\",\"expiration_value\":\"\",\"floor_strike\":77123.96,\"fractional_trading_enabled\":true,\"last_price_dollars\":\"0.4700\",\"latest_expiration_time\":\"2026-06-02T14:15:00Z\",\"liquidity_dollars\":\"0.0000\",\"market_type\":\"binary\",\"no_ask_dollars\":\"0.5400\",\"no_bid_dollars\":\"0.5300\",\"no_sub_title\":\"Target price: TBD\",\"notional_value_dollars\":\"1.0000\",\"occurrence_datetime\":\"2026-05-26T14:20:00Z\",\"open_interest_fp\":\"51384.17\",\"open_time\":\"2026-05-26T14:00:00Z\",\"previous_price_dollars\":\"0.0000\",\"previous_yes_ask_dollars\":\"0.0000\",\"previous_yes_bid_dollars\":\"0.0000\",\"price_level_structure\":\"tapered_deci_cent\",\"price_ranges\":[{\"end\":\"0.1000\",\"start\":\"0.0000\",\"step\":\"0.0010\"},{\"end\":\"0.9000\",\"start\":\"0.1000\",\"step\":\"0.0100\"},{\"end\":\"1.0000\",\"start\":\"0.9000\",\"step\":\"0.0010\"}],\"response_price_units\":\"usd_cent\",\"result\":\"\",\"rules_primary\":\"If the simple average of the sixty seconds of CF Benchmarks' BRTI before 10:15 AM EDT on May 26, 2026 is at least the simple average of …"
+      }
+    },
+    {
+      "category": "markets",
+      "name": "orderbook KXBTC15M-26MAY261015-15",
+      "method": "GET",
+      "path": "/markets/KXBTC15M-26MAY261015-15/orderbook",
+      "status": "pass",
+      "http": 200,
+      "ms": 57,
+      "sample": {
+        "orderbook_fp": {
+          "no_dollars": [
+            [
+              "0.5000",
+              "175.00"
+            ],
+            [
+              "0.5100",
+              "152.00"
+            ],
+            [
+              "0.5200",
+              "150.00"
+            ],
+            [
+              "0.5300",
+              "2011.90"
+            ],
+            [
+              "0.5400",
+              "1545.87"
+            ]
+          ],
+          "yes_dollars": [
+            [
+              "0.4100",
+              "171.00"
+            ],
+            [
+              "0.4200",
+              "1960.85"
+            ],
+            [
+              "0.4300",
+              "1517.03"
+            ],
+            [
+              "0.4400",
+              "175.00"
+            ],
+            [
+              "0.4500",
+              "32.00"
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "category": "markets",
+      "name": "trades KXBTC15M-26MAY261015-15",
+      "method": "GET",
+      "path": "/markets/trades",
+      "status": "pass",
+      "http": 200,
+      "ms": 59,
+      "sample": {
+        "_truncated": true,
+        "_preview": "{\"cursor\":\"EhIKEL9_95eFPUuXYK1IvPsFq14aCwi20dbQBhCQgd9Y\",\"trades\":[{\"count_fp\":\"34.30\",\"created_time\":\"2026-05-26T14:05:42.928237Z\",\"no_price_dollars\":\"0.5500\",\"taker_book_side\":\"ask\",\"taker_outcome_side\":\"no\",\"taker_side\":\"no\",\"ticker\":\"KXBTC15M-26MAY261015-15\",\"trade_id\":\"9295bb71-b8b9-4b2b-f86d-e7fdb5765dd2\",\"yes_price_dollars\":\"0.4500\"},{\"count_fp\":\"6.00\",\"created_time\":\"2026-05-26T14:05:42.928237Z\",\"no_price_dollars\":\"0.5400\",\"taker_book_side\":\"ask\",\"taker_outcome_side\":\"no\",\"taker_side\":\"no\",\"ticker\":\"KXBTC15M-26MAY261015-15\",\"trade_id\":\"6f33cd7e-87ca-47cf-ce83-c150a9f6459b\",\"yes_price_dollars\":\"0.4600\"},{\"count_fp\":\"1.00\",\"created_time\":\"2026-05-26T14:05:42.403204Z\",\"no_price_dollars\":\"0.5300\",\"taker_book_side\":\"bid\",\"taker_outcome_side\":\"yes\",\"taker_side\":\"yes\",\"ticker\":\"KXBTC15M-26MAY261015-15\",\"trade_id\":\"3975b89b-0680-532a-a90a-16ec51e9c281\",\"yes_price_dollars\":\"0.4700\"},{\"count_fp\":\"15.00\",\"created_time\":\"2026-05-26T14:05:42.190099Z\",\"no_price_dollars\":\"0.5400\",\"taker_book_side\":\"bid\",\"taker_outcome_side\":\"yes\",\"taker_side\":\"yes\",\"ticker\":\"KXBTC15M-26MAY261015-15\",\"trade_id\":\"cfa7fc67-ea38-4ffc-21da-d71f5ba1e23d\",\"yes_price_dollars\":\"0.4600\"},{\"count_fp\":\"2.00\",\"created…"
+      }
+    },
+    {
+      "category": "portfolio",
+      "name": "balance",
+      "method": "GET",
+      "path": "/portfolio/balance",
+      "status": "pass",
+      "http": 200,
+      "ms": 62,
+      "sample": {
+        "balance": 0,
+        "balance_breakdown": [
+          {
+            "balance": "0.0000",
+            "exchange_index": 0
+          }
+        ],
+        "balance_dollars": "0.0000",
+        "portfolio_value": 0,
+        "updated_ts": 1779804343
+      }
+    },
+    {
+      "category": "portfolio",
+      "name": "positions (limit=5)",
+      "method": "GET",
+      "path": "/portfolio/positions",
+      "status": "pass",
+      "http": 200,
+      "ms": 60,
+      "sample": {
+        "cursor": "",
+        "event_positions": [],
+        "market_positions": []
+      }
+    },
+    {
+      "category": "portfolio",
+      "name": "fills (limit=5)",
+      "method": "GET",
+      "path": "/portfolio/fills",
+      "status": "pass",
+      "http": 200,
+      "ms": 61,
+      "sample": {
+        "cursor": "",
+        "fills": []
+      }
+    },
+    {
+      "category": "portfolio",
+      "name": "settlements (limit=5)",
+      "method": "GET",
+      "path": "/portfolio/settlements",
+      "status": "pass",
+      "http": 200,
+      "ms": 146,
+      "sample": {
+        "cursor": "",
+        "settlements": []
+      }
+    },
+    {
+      "category": "orders",
+      "name": "list orders resting",
+      "method": "GET",
+      "path": "/portfolio/orders",
+      "status": "pass",
+      "http": 200,
+      "ms": 59,
+      "sample": {
+        "cursor": "",
+        "orders": []
+      }
+    },
+    {
+      "category": "orders",
+      "name": "get order",
+      "method": "GET",
+      "path": "/portfolio/orders/{id}",
+      "status": "skip",
+      "error": "no resting orders"
+    },
+    {
+      "category": "order-cycle",
+      "name": "place + cancel",
+      "method": "POST",
+      "path": "/portfolio/orders",
+      "status": "skip",
+      "error": "destructive flag off"
+    }
+  ]
+}

@@ -1,0 +1,120 @@
+/**
+ * Vision-analyzes frame_*.jpg files under docs/inspiration/frames/ using
+ * Claude Opus 4.7 via the existing OAuth client. Writes structured
+ * observations to docs/inspiration/frame-analysis.json + a human-readable
+ * summary to docs/inspiration/FRAME-ANALYSIS.md so we can craft a
+ * video-inspired UI for /crypto without hand-screenshotting.
+ *
+ * Skips frames that are pure intro / talking-head with no UI on screen
+ * (filter prompt: "skip if no dashboard / charts / tables visible").
+ */
+import "./_env.ts";
+import { readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { getOAuthClient, authIsAvailable } from "../src/lib/anthropic/auth.ts";
+
+const FRAMES_DIR = resolve(process.cwd(), "docs/inspiration/frames");
+const OUT_JSON = resolve(process.cwd(), "docs/inspiration/frame-analysis.json");
+const OUT_MD = resolve(process.cwd(), "docs/inspiration/FRAME-ANALYSIS.md");
+
+type Observation = {
+  frame: string;
+  has_ui: boolean;
+  layout: string;
+  data_fields: string[];
+  color_palette: string[];
+  interactions: string[];
+  inspiration_pull: string;        // what to borrow for /crypto
+  raw: string;                     // full model response for traceability
+};
+
+const PROMPT = `You are analyzing a screenshot from a video where someone is comparing AI trading agents on Polymarket. Help me extract concrete UI inspiration to apply to a crypto-trading dashboard I'm building.
+
+For this screenshot, answer in STRICT JSON with these keys (no prose, no markdown fences):
+{
+  "has_ui": boolean,                 // true if a dashboard / charts / tables / terminal are clearly visible; false for plain talking-head / slides / black screens
+  "layout": string,                  // 1-2 sentences describing the spatial layout (e.g. "left sidebar with positions, big center chart, right ticker")
+  "data_fields": string[],           // bullet-list of every concrete data field shown (e.g. "BTC price", "implied probability %", "P&L", "position size")
+  "color_palette": string[],         // dominant colors as hex or descriptive ("dark navy bg", "lime green up", "red down")
+  "interactions": string[],          // visible interactive elements ("dropdown selector", "kill switch button", "tab navigation")
+  "inspiration_pull": string         // 1-2 sentences: what SPECIFIC element would improve a crypto trading dashboard showing live Coinbase prices + Polymarket crypto markets side by side
+}
+
+If has_ui=false, the other fields can be empty arrays/strings — but still return valid JSON.`;
+
+(async () => {
+  if (!authIsAvailable()) {
+    console.error("Claude OAuth not available — set up ~/.claude/.credentials.json or ANTHROPIC_API_KEY.");
+    process.exit(1);
+  }
+  const client = await getOAuthClient();
+
+  const files = readdirSync(FRAMES_DIR).filter((f) => f.endsWith(".jpg")).sort();
+  console.log(`Analyzing ${files.length} frames from ${FRAMES_DIR}`);
+  const observations: Observation[] = [];
+
+  for (const f of files) {
+    const path = join(FRAMES_DIR, f);
+    const bytes = readFileSync(path);
+    const base64 = bytes.toString("base64");
+    process.stdout.write(`  ${f} ... `);
+    try {
+      const resp = await client.messages.create({
+        model: "claude-opus-4-7",
+        max_tokens: 800,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64 } },
+            { type: "text", text: PROMPT },
+          ],
+        }],
+      });
+      const text = (resp.content[0] as { type: string; text?: string }).text ?? "{}";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { has_ui: false, layout: "", data_fields: [], color_palette: [], interactions: [], inspiration_pull: "" };
+      observations.push({ frame: f, ...parsed, raw: text });
+      console.log(parsed.has_ui ? `UI ✓  ${(parsed.inspiration_pull as string).slice(0, 60)}` : "no UI");
+    } catch (err) {
+      console.log(`FAIL — ${(err as Error).message.slice(0, 80)}`);
+      observations.push({ frame: f, has_ui: false, layout: "", data_fields: [], color_palette: [], interactions: [], inspiration_pull: `error: ${(err as Error).message}`, raw: "" });
+    }
+  }
+
+  mkdirSync(resolve("docs/inspiration"), { recursive: true });
+  writeFileSync(OUT_JSON, JSON.stringify(observations, null, 2));
+
+  // Human-readable summary
+  const uiFrames = observations.filter((o) => o.has_ui);
+  const allFields = new Set<string>();
+  const allColors = new Set<string>();
+  const allInteractions = new Set<string>();
+  for (const o of uiFrames) {
+    o.data_fields.forEach((x) => allFields.add(x));
+    o.color_palette.forEach((x) => allColors.add(x));
+    o.interactions.forEach((x) => allInteractions.add(x));
+  }
+
+  const md = `# Frame analysis — Codex 5.5 vs Claude Opus 4.7 Polymarket Trading Challenge
+
+Generated by \`scripts/analyze-video-frames.ts\` on ${new Date().toISOString()} from ${files.length} keyframes (1 frame every 45 sec).
+
+**${uiFrames.length} of ${files.length} frames contained visible UI** (the rest were talking-head / intro / slides).
+
+## Aggregated data fields seen across all UI frames
+${Array.from(allFields).sort().map((f) => `- ${f}`).join("\n")}
+
+## Color palette signals
+${Array.from(allColors).sort().map((c) => `- ${c}`).join("\n")}
+
+## Interactive elements seen
+${Array.from(allInteractions).sort().map((i) => `- ${i}`).join("\n")}
+
+## Per-frame inspiration pulls (UI-bearing frames only)
+${uiFrames.map((o) => `### ${o.frame}\n**Layout:** ${o.layout}\n\n**Pull:** ${o.inspiration_pull}\n`).join("\n")}
+`;
+  writeFileSync(OUT_MD, md);
+  console.log(`\nWrote ${OUT_JSON}`);
+  console.log(`Wrote ${OUT_MD}`);
+  console.log(`UI-bearing frames: ${uiFrames.length}/${files.length}`);
+})();

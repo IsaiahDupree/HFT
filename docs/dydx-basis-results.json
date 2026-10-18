@@ -1,0 +1,60 @@
+{
+  "asset": "BTC",
+  "net": "mainnet",
+  "cycles": 4,
+  "tickMs": 3000,
+  "basisBps": {
+    "mean": 4.703,
+    "stdev": 0.058,
+    "min": 4.663,
+    "max": 4.804
+  },
+  "alertTriggers": 0,
+  "when": "2026-05-30T03:58:54.504Z",
+  "samples": [
+    {
+      "ts": 1780113522756,
+      "cycle": 1,
+      "spot": 73416.065,
+      "perp": 73451.33168,
+      "basis": 35.26668000000063,
+      "basisBps": 4.8036734194349195,
+      "fundingBpsHourly": 0.008448275862069001,
+      "fundingApr": 0.007400689655172445,
+      "preferredLeg": "long-basis"
+    },
+    {
+      "ts": 1780113525528,
+      "cycle": 2,
+      "spot": 73417.025,
+      "perp": 73451.33168,
+      "basis": 34.30668000000878,
+      "basisBps": 4.672850745451588,
+      "fundingBpsHourly": 0.008448275862069001,
+      "fundingApr": 0.007400689655172445,
+      "preferredLeg": "long-basis"
+    },
+    {
+      "ts": 1780113528692,
+      "cycle": 3,
+      "spot": 73417.025,
+      "perp": 73451.33168,
+      "basis": 34.30668000000878,
+      "basisBps": 4.672850745451588,
+      "fundingBpsHourly": 0.008448275862069001,
+      "fundingApr": 0.007400689655172445,
+      "preferredLeg": "long-basis"
+    },
+    {
+      "ts": 1780113531704,
+      "cycle": 4,
+      "spot": 73417.095,
+      "perp": 73451.33168,
+      "basis": 34.2366800000018,
+      "basisBps": 4.663311725968155,
+      "fundingBpsHourly": 0.0086864406779661,
+      "fundingApr": 0.007609322033898303,
+      "preferredLeg": "long-basis"
+    }
+  ]
+}

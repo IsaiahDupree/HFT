@@ -1,0 +1,73 @@
+{
+  "net": "mainnet",
+  "market": "BTC-USD",
+  "cycles": 4,
+  "tickMs": 1500,
+  "obi": {
+    "mean": -0.5182,
+    "stdev": 0.0661,
+    "min": -0.6199662406558959,
+    "max": -0.44447881224868535
+  },
+  "micropriceDevBps": {
+    "mean": -0.211,
+    "stdev": 0.401,
+    "min": -0.8830418360325706,
+    "max": 0.17557157456953182
+  },
+  "when": "2026-05-30T03:58:26.770Z",
+  "samples": [
+    {
+      "ts": 1780113501130,
+      "cycle": 1,
+      "oracle": 73451.33168,
+      "bestBid": 73443,
+      "bestAsk": 73459,
+      "spreadBps": 2.178322963608392,
+      "microprice": 73444.84562012143,
+      "micropriceDevBps": -0.8830418360325706,
+      "obi": -0.5295522388059702,
+      "topBidSize": 0.0133,
+      "topAskSize": 0.102
+    },
+    {
+      "ts": 1780113502434,
+      "cycle": 2,
+      "oracle": 73451.33168,
+      "bestBid": 73442,
+      "bestAsk": 73458,
+      "spreadBps": 2.178352620830497,
+      "microprice": 73451.11392405065,
+      "micropriceDevBps": -0.029646290186569495,
+      "obi": -0.4787616990640749,
+      "topBidSize": 0.0135,
+      "topAskSize": 0.0102
+    },
+    {
+      "ts": 1780113503981,
+      "cycle": 3,
+      "oracle": 73451.33168,
+      "bestBid": 73443,
+      "bestAsk": 73460,
+      "spreadBps": 2.314452393756424,
+      "microprice": 73452.62127659573,
+      "micropriceDevBps": 0.17557157456953182,
+      "obi": -0.6199662406558959,
+      "topBidSize": 0.0133,
+      "topAskSize": 0.0102
+    },
+    {
+      "ts": 1780113505481,
+      "cycle": 4,
+      "oracle": 73451.33168,
+      "bestBid": 73442,
+      "bestAsk": 73457,
+      "spreadBps": 2.0422194841353583,
+      "microprice": 73450.54430379748,
+      "micropriceDevBps": -0.10719699486958333,
+      "obi": -0.44447881224868535,
+      "topBidSize": 0.0135,
+      "topAskSize": 0.0102
+    }
+  ]
+}

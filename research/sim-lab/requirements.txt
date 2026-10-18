@@ -1,0 +1,5 @@
+# HFT workspace — runtime deps (Python 3.12+)
+openai>=1.40          # LLM-trader brain + video prompt-extraction
+pillow>=10.0          # perceptual frame de-dupe (video intelligence)
+imagehash>=4.3        # perceptual frame de-dupe (video intelligence)
+# market data + sim use only the Python stdlib (urllib/json) — no extra deps.

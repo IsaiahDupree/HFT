@@ -1,0 +1,12 @@
+{
+  "supplements_snapshot": "a1f9c985ad7121c0-r2",
+  "source_roots": [
+    "C:/Users/Isaia/Documents/Coding/HFT"
+  ],
+  "files": {
+    "research/sim-lab/core/session.py": {
+      "source": "C:\\Users\\Isaia\\Documents\\Coding\\HFT\\research\\sim-lab\\core\\session.py",
+      "reason": "portable authored code absent from staged source selection"
+    }
+  }
+}

@@ -88,3 +88,11 @@ sources/
 # hl-wallet-track: per-wallet dossiers regenerate every run (source of truth is wallets.db on
 # My Passport). Keep the index README in-repo for browsing; ignore the churning per-wallet files.
 docs/wallets/0x*.md
+
+# Finance workspace hygiene (2026-10-24): local caches and private material
+.pytest_cache/
+.ruff_cache/
+id_ed25519
+id_rsa
+.sol-keypair.json
+*-keypair.json
